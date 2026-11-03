@@ -7,6 +7,9 @@ export class Aircraft {
   /** world velocity (m/s); `speed` mirrors |vel| for systems that only need magnitude */
   vel = new Vector3(); onGround = false; gear = true; brakes = true; afterburner = false; stalled = false;
   groundPitch = 0; heading = 0; everAirborne = false; skill = .5; crashReason = '';
+  /** engine spool (0..1), afterburner light (0..1), flaps/speed brake commanded & actual position, smoothed stick */
+  n = .6; abLevel = 0; flaps = true; flapPos = 1; speedbrake = false; sbPos = 0; sm = { p: 0, r: 0, y: 0 };
+  aoa = 0; beta = 0; gLoad = 1; touchdownAt: Vector3 | null = null;
   speed = 120; throttle = .6; hp = 100; maxHp = 100; alive = true;
   ammo = 500; missiles = 6; gunCd = 0; missileCd = 0; respawnT = 0;
   lockTarget: Aircraft | null = null; lockTime = 0;

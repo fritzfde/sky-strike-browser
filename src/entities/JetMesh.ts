@@ -14,7 +14,7 @@ function mat(scene: Scene, name: string, c: Color3, emissive = false) {
 }
 function slab(name: string, shape: [number, number][], thick: number, scene: Scene) {
   // shape in XZ plane, extruded in Y
-  return MeshBuilder.ExtrudePolygon(name, { shape: shape.map(([x, z]) => new Vector3(x, 0, z)), depth: thick }, scene, earcut);
+  return MeshBuilder.ExtrudePolygon(name, { shape: shape.map(([x, z]) => new Vector3(x, 0, z)), depth: thick, sideOrientation: Mesh.DOUBLESIDE }, scene, earcut);
 }
 export function buildJet(scene: Scene, hull: Color3, name: string): TransformNode {
   const root = new TransformNode(name, scene);
@@ -25,14 +25,13 @@ export function buildJet(scene: Scene, hull: Color3, name: string): TransformNod
   const prof = [[0, 9], [.5, 8], [1.0, 6], [1.35, 3], [1.5, 0], [1.5, -4], [1.3, -6.5], [1.1, -7]].map(([r, z]) => new Vector3(r, z, 0));
   const fus = MeshBuilder.CreateLathe('fus', { shape: prof, tessellation: 14 }, scene); fus.rotation.x = Math.PI / 2; fus.scaling.y = 1; fus.scaling.x = 1.1; parts.push(fus);
   // main wings (swept delta)
-  const wing = slab('wing', [[1, 2.5], [7.5, -3], [7.5, -4.3], [1, -4.5], [-1, -4.5], [-7.5, -4.3], [-7.5, -3], [-1, 2.5]], .25, scene); wing.position.y = -.1; parts.push(wing);
+  const wing = slab('wing', [[1, 2.5], [7.5, -3], [7.5, -3.6], [1.2, -3.7], [1, -4.5], [-1, -4.5], [-1.2, -3.7], [-7.5, -3.6], [-7.5, -3], [-1, 2.5]], .25, scene); wing.position.y = -.1; parts.push(wing);
   // LERX strakes
   const lerx = slab('lerx', [[1, 5.5], [1.9, 2], [-1.9, 2], [-1, 5.5]], .15, scene); parts.push(lerx);
   // horizontal stabilizers
-  const hs = slab('hs', [[1, -4.8], [4.2, -6.6], [4.2, -7.5], [1, -7.3], [-1, -7.3], [-4.2, -7.5], [-4.2, -6.6], [-1, -4.8]], .18, scene); parts.push(hs);
-  // twin canted vertical tails
+  // (stabilators, ailerons, flaps, rudders, speed brakes are separate pivoting meshes — see below)
   for (const s of [-1, 1]) {
-    const vt = slab('vt', [[0, -3.5], [0, -7], [3.6, -7.6], [3.6, -6.4]], .16, scene);
+    const vt = slab('vt', [[0, -3.5], [0, -6.9], [3.6, -7.0], [3.6, -6.4]], .16, scene);
     vt.rotation.z = Math.PI / 2 - s * .35; vt.position.set(s * .8, .6, 0); parts.push(vt);
   }
   // intakes
@@ -49,7 +48,37 @@ export function buildJet(scene: Scene, hull: Color3, name: string): TransformNod
     const st = MeshBuilder.CreateCylinder('strut', { diameter: .18, height: 1.6, tessellation: 6 }, scene); st.position.set(x, -1.5, z); st.material = dark; st.parent = gear;
     const wh = MeshBuilder.CreateCylinder('wheel', { diameter: .9, height: .35, tessellation: 12 }, scene); wh.rotation.z = Math.PI / 2; wh.position.set(x, -2.15, z); wh.material = dark; wh.parent = gear;
   }
-  root.metadata = { flame, gear };
+  // ---- moving control surfaces: pivot TransformNode on the hinge line (local X axis), panel hangs aft (−Z) ----
+  const pivot = (x: number, y: number, z: number, parent: TransformNode = root) => { const t = new TransformNode('hinge', scene); t.position.set(x, y, z); t.parent = parent; return t; };
+  const panel = (p: TransformNode, shape: [number, number][], th: number, m = hm) => { const s = slab('surf', shape, th, scene); s.material = m; s.parent = p; return s; };
+  const surf = { stab: [] as TransformNode[], ail: [] as TransformNode[], flap: [] as TransformNode[], rud: [] as TransformNode[], sb: [] as TransformNode[] };
+  for (const s of [-1, 1]) { // index 0 = left (−X)
+    const st = pivot(s * 1, 0, -6.1); panel(st, [[0, 1.3], [s * 3.2, -.5], [s * 3.2, -1.4], [0, -1.2]].map(([x, z]) => [x, z]) as [number, number][], .18); surf.stab.push(st);
+    const ai = pivot(0, -.1, -3.62); panel(ai, (s < 0 ? [[-7.4, 0], [-3.6, 0], [-3.6, -.8], [-7.4, -.75]] : [[3.6, 0], [7.4, 0], [7.4, -.75], [3.6, -.8]]) as [number, number][], .2); surf.ail.push(ai);
+    const fl = pivot(0, -.1, -3.7); panel(fl, (s < 0 ? [[-3.55, 0], [-1.2, 0], [-1.05, -.75], [-3.55, -.8]] : [[1.2, 0], [3.55, 0], [3.55, -.8], [1.05, -.75]]) as [number, number][], .2); surf.flap.push(fl);
+    // rudder: hinge in the fin's own frame (fin spans local X = height, chord along Z)
+    const finFrame = new TransformNode('fin', scene); finFrame.parent = root; finFrame.rotation.z = Math.PI / 2 - s * .35; finFrame.position.set(s * .8, .6, 0);
+    const rh = pivot(0, -.08, -6.9, finFrame); panel(rh, [[.3, 0], [3.5, -.1], [3.5, -.75], [.3, -.85]], .14); surf.rud.push(rh);
+    const sb = pivot(s * .55, 1.05, -5.0); panel(sb, [[-.4, 0], [.4, 0], [.4, -1.5], [-.4, -1.5]], .06, dark); sb.rotation.z = -s * .25; surf.sb.push(sb);
+  }
+  root.metadata = { flame, gear, surf };
   for (const m of root.getChildMeshes()) m.isPickable = false;
   return root;
+}
+
+/** Cockpit interior (visible only in cockpit view): dash, glare shield, canopy frame. Eye point ≈ (0, 1.45, 4.3). */
+export function buildCockpit(scene: Scene, parent: TransformNode): TransformNode {
+  const root = new TransformNode('cockpit', scene); root.parent = parent;
+  const dark = mat(scene, 'cpdark', new Color3(.08, .09, .1)), frame = mat(scene, 'cpframe', new Color3(.18, .2, .22));
+  const dash = MeshBuilder.CreateBox('dash', { width: 1.3, height: .45, depth: .5 }, scene); dash.position.set(0, 1.0, 5.15); dash.material = dark; dash.parent = root;
+  const glare = MeshBuilder.CreateBox('glare', { width: 1.1, height: .06, depth: .35 }, scene); glare.position.set(0, 1.25, 5.0); glare.material = frame; glare.parent = root;
+  for (const s of [-1, 1]) {
+    const rail = MeshBuilder.CreateBox('rail', { width: .07, height: .07, depth: 2.6 }, scene); rail.position.set(s * .58, 1.2, 4.0); rail.material = frame; rail.parent = root;
+    const sideP = MeshBuilder.CreateBox('side', { width: .1, height: .5, depth: 2.2 }, scene); sideP.position.set(s * .62, .95, 4.0); sideP.material = dark; sideP.parent = root;
+  }
+  const bow = MeshBuilder.CreateTorus('bow', { diameter: 1.15, thickness: .05, tessellation: 24 }, scene); bow.rotation.x = Math.PI / 2; bow.scaling.set(1, 1, .75); bow.position.set(0, 1.2, 3.3); bow.material = frame; bow.parent = root;
+  // MFD screens
+  for (const s of [-1, 1]) { const m = MeshBuilder.CreatePlane('mfd', { width: .3, height: .26 }, scene); m.position.set(s * .33, 1.0, 4.89); m.material = mat(scene, 'mfd', new Color3(.05, .25, .1), true); m.parent = root; }
+  for (const m of root.getChildMeshes()) m.isPickable = false;
+  root.setEnabled(false); return root;
 }
