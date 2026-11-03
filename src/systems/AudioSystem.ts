@@ -18,6 +18,7 @@ export class AudioSystem {
     this.eng = { osc, osc2, noiseF, g };
     const lo = ctx.createOscillator(); lo.type = 'square'; lo.frequency.value = 1000; const lg = ctx.createGain(); lg.gain.value = 0; lo.connect(lg).connect(this.master); lo.start(); this.lockOsc = { o: lo, g: lg };
   }
+  suspend(on: boolean) { if (!this.ctx) return; on ? this.ctx.suspend() : this.ctx.resume(); }
   toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : .5; }
   engine(throttle: number, alive: boolean) {
     if (!this.eng || !this.ctx) return; const t = this.ctx.currentTime;

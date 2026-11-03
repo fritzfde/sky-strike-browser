@@ -7,7 +7,10 @@ import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { Pool } from '../core/Pool';
 /** Pooled particle systems for explosions, sparks and missile trails. */
 export class Effects {
-  private tex: Texture;
+  private tex: Texture; private timers: { t: number; fn: () => void }[] = [];
+  /** Game-time timers so pause freezes them. */
+  after(t: number, fn: () => void) { this.timers.push({ t, fn }); }
+  update(dt: number) { for (let i = this.timers.length - 1; i >= 0; i--) { const x = this.timers[i]; x.t -= dt; if (x.t <= 0) { this.timers.splice(i, 1); x.fn(); } } }
   private booms: Pool<ParticleSystem>; private sparks: Pool<ParticleSystem>; private trails: Pool<ParticleSystem>;
   constructor(private scene: Scene) {
     const t = new DynamicTexture('ptex', 64, scene, false); const ctx = t.getContext() as CanvasRenderingContext2D;
@@ -33,11 +36,11 @@ export class Effects {
   }
   private burst(pool: Pool<ParticleSystem>, pos: Vector3, life: number, count: number) {
     const p = pool.acquire(); (p.emitter as Vector3).copyFrom(pos); p.manualEmitCount = count; p.reset(); p.start();
-    setTimeout(() => pool.release(p), life * 1000);
+    this.after(life, () => pool.release(p));
   }
   explosion(pos: Vector3, big = 1) { this.burst(this.booms, pos, 3.5, Math.round(140 * big)); }
   spark(pos: Vector3) { this.burst(this.sparks, pos, .8, 8); }
   /** Returns a trail whose emitter follows the given vector; call stopTrail when done. */
   startTrail(follow: Vector3) { const p = this.trails.acquire(); p.emitter = follow; p.reset(); p.start(); return p; }
-  stopTrail(p: ParticleSystem) { p.stop(); setTimeout(() => { p.emitter = new Vector3(); this.trails.release(p); }, 1700); }
+  stopTrail(p: ParticleSystem) { p.stop(); this.after(1.7, () => { p.emitter = new Vector3(); this.trails.release(p); }); }
 }
