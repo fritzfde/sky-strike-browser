@@ -5,15 +5,18 @@ export class Input {
   private mouse = { x: 0, y: 0, l: false, r: false };
   private touch = { x: 0, y: 0, gun: false, msl: false, thr: false, brk: false };
   locked = false;
-  onToggleMute?: () => void;
+  onToggleMute?: () => void; onPauseKey?: () => void; onLockLost?: () => void;
+  exitLock() { if (document.pointerLockElement) document.exitPointerLock(); }
+  clear() { this.keys.clear(); this.mouse.l = this.mouse.r = false; }
   readonly c: Controls = { pitch: 0, roll: 0, yaw: 0, throttle: 0, fireGun: false, fireMissile: false };
   constructor(private canvas: HTMLCanvasElement) {
     const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight']);
     // capture phase on window so nothing (canvas focus, Babylon) swallows keys
-    window.addEventListener('keydown', e => { const k = this.code(e); this.keys.add(k); if (block.has(k)) e.preventDefault(); if (k === 'KeyM' && !e.repeat) this.onToggleMute?.(); }, { capture: true });
+    window.addEventListener('keydown', e => { const k = this.code(e); this.keys.add(k); if (block.has(k)) e.preventDefault(); if (k === 'KeyM' && !e.repeat) this.onToggleMute?.(); if ((k === 'KeyP' || k === 'Escape') && !e.repeat) this.onPauseKey?.(); }, { capture: true });
     window.addEventListener('keyup', e => this.keys.delete(this.code(e)), { capture: true });
-    window.addEventListener('blur', () => { this.keys.clear(); this.mouse.l = this.mouse.r = false; });
-    document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; this.mouse.x = this.mouse.y = 0; });
+    window.addEventListener('blur', () => { this.clear(); this.onLockLost?.(); });
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.onLockLost?.(); });
+    document.addEventListener('pointerlockchange', () => { const was = this.locked; this.locked = document.pointerLockElement === canvas; this.mouse.x = this.mouse.y = 0; if (was && !this.locked) this.onLockLost?.(); });
     window.addEventListener('mousemove', e => {
       if (this.locked) { // virtual stick from relative motion
         this.mouse.x = clamp(this.mouse.x + e.movementX / 250); this.mouse.y = clamp(this.mouse.y + e.movementY / 250);
@@ -32,6 +35,7 @@ export class Input {
   requestLock() { try { (this.canvas.requestPointerLock as any)?.call(this.canvas)?.catch?.(() => {}); } catch {} this.canvas.focus(); }
   private setupTouch() {
     document.body.classList.add('touch');
+    document.getElementById('bPause')!.addEventListener('touchend', e => { e.preventDefault(); this.onPauseKey?.(); });
     const sk = document.getElementById('stick')!, knob = document.getElementById('knob')!;
     const mv = (e: TouchEvent) => { const t = e.targetTouches[0], r = sk.getBoundingClientRect();
       this.touch.x = clamp((t.clientX - r.left - 65) / 65); this.touch.y = clamp((t.clientY - r.top - 65) / 65);

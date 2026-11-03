@@ -25,7 +25,7 @@ export class Game {
   input: Input; audio = new AudioSystem(); flight = new FlightSystem(); ai = new AISystem();
   fx: Effects; weapons: WeaponSystem; hud = new HUD();
   player: Aircraft; enemies: Aircraft[] = []; all: Aircraft[] = [];
-  score = 0; wave = 0; started = false; time = 0;
+  score = 0; wave = 0; started = false; time = 0; paused = false;
   constructor(canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, { stencil: false, preserveDrawingBuffer: false }, true);
     this.engine.setHardwareScalingLevel(Math.max(1, (window.devicePixelRatio || 1) / 1.5));
@@ -38,7 +38,13 @@ export class Game {
     this.cam.rotationQuaternion = Quaternion.Identity();
     buildWorld(s);
     this.fx = new Effects(s);
-    this.input = new Input(canvas); this.input.onToggleMute = () => this.audio.toggleMute();
+    this.input = new Input(canvas); this.input.onToggleMute = () => this.toggleMute();
+    this.input.onPauseKey = () => { if (this.started) this.setPaused(!this.paused); };
+    this.input.onLockLost = () => { if (this.started) this.setPaused(true); };
+    const $ = (id: string) => document.getElementById(id)!;
+    $('btnResume').addEventListener('click', () => { this.setPaused(false); if (!('ontouchstart' in window)) this.input.requestLock(); });
+    $('btnRestart').addEventListener('click', () => { this.restart(); this.setPaused(false); if (!('ontouchstart' in window)) this.input.requestLock(); });
+    $('btnMute').addEventListener('click', () => this.toggleMute());
     this.player = new Aircraft(buildJet(s, new Color3(.38, .45, .55), 'player'), 'blue', true); this.all.push(this.player);
     this.weapons = new WeaponSystem(s, this.fx, this.audio, () => this.all);
     this.weapons.onKill = (v, k) => this.onKill(v, k);
@@ -51,6 +57,18 @@ export class Game {
     canvas.addEventListener('click', () => { if (this.started && !this.input.locked && !('ontouchstart' in window)) this.input.requestLock(); });
     window.addEventListener('resize', () => this.engine.resize());
     this.engine.runRenderLoop(() => this.frame());
+  }
+  toggleMute() { this.audio.toggleMute(); document.getElementById('btnMute')!.textContent = this.audio.muted ? 'Sound: OFF' : 'Sound: ON'; }
+  setPaused(on: boolean) {
+    if (on === this.paused) return; this.paused = on; this.input.clear();
+    document.getElementById('pause')!.style.display = on ? 'flex' : 'none';
+    this.audio.suspend(on); if (on) this.input.exitLock();
+  }
+  restart() {
+    for (const e of this.enemies) e.node.dispose(); this.enemies = []; this.all = [this.player]; this.wave = 0; this.score = 0;
+    for (const pool of [this.weapons.bullets, this.weapons.bulletsRed]) while (pool.active.length) pool.release(pool.active[0]);
+    while (this.weapons.missiles.active.length) { const m = this.weapons.missiles.active[0]; if (m.trail) this.fx.stopTrail(m.trail); m.trail = undefined; this.weapons.missiles.release(m); }
+    this.resetPlayer();
   }
   resetPlayer() {
     const p = this.player; p.pos.set(0, 600, -1500); p.rot.copyFrom(Quaternion.Identity()); Object.assign(p, { hp: 100, ammo: 500, missiles: 6, speed: 140, throttle: .6, alive: true, lockTarget: null, lockTime: 0 }); p.setVisible(true);
@@ -70,7 +88,9 @@ export class Game {
     if (v.isPlayer) { v.respawnT = 3; } else if (k.isPlayer) { this.score += 100; this.hud.flash('+100', 1); }
   }
   frame() {
+    if (this.paused) return; // freeze everything: sim, particles (updated in render), timers
     const dt = Math.min(this.engine.getDeltaTime() / 1000, .05); this.time += dt; const p = this.player;
+    this.fx.update(dt);
     if (this.started) {
       this.input.update(dt);
       if (p.alive) Object.assign(p.ctrl, this.input.c); else { p.respawnT -= dt; if (p.respawnT <= 0) this.resetPlayer(); }
