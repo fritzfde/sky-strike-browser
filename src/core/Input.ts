@@ -1,64 +1,76 @@
-/** Unified input: keyboard (by KeyboardEvent.code), pointer-locked mouse, touch. Produces normalized axes. */
-export interface Controls { pitch: number; roll: number; yaw: number; throttle: number; fireGun: boolean; fireMissile: boolean; }
+/**
+ * Unified input -> normalized Controls. Flight-sim layout:
+ * Arrow Down = nose up, Arrow Up = nose down, Arrow Left/Right = roll, A/D = rudder,
+ * W/S = persistent throttle, Shift (hold) = afterburner. Mouse / right-side touch = free-look only.
+ */
+export interface Controls { pitch: number; roll: number; yaw: number; throttle: number; afterburner: boolean; brake: boolean; fireGun: boolean; fireMissile: boolean; }
 export class Input {
   private keys = new Set<string>();
-  private mouse = { x: 0, y: 0, l: false, r: false };
-  private touch = { x: 0, y: 0, gun: false, msl: false, thr: false, brk: false };
+  private mouse = { l: false, r: false };
+  private touch = { x: 0, y: 0, gun: false, msl: false, thr: false, brk: false, ab: false };
   locked = false;
+  /** accumulated free-look deltas (radians), consumed by the camera */
+  look = { dx: 0, dy: 0, active: false, idle: 0 };
   onToggleMute?: () => void; onPauseKey?: () => void; onLockLost?: () => void;
-  exitLock() { if (document.pointerLockElement) document.exitPointerLock(); }
-  clear() { this.keys.clear(); this.mouse.l = this.mouse.r = false; }
-  readonly c: Controls = { pitch: 0, roll: 0, yaw: 0, throttle: 0, fireGun: false, fireMissile: false };
+  onGear?: () => void; onBrake?: () => void; onRecenter?: () => void;
+  readonly c: Controls = { pitch: 0, roll: 0, yaw: 0, throttle: 0, afterburner: false, brake: false, fireGun: false, fireMissile: false };
   constructor(private canvas: HTMLCanvasElement) {
-    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight']);
-    // capture phase on window so nothing (canvas focus, Babylon) swallows keys
-    window.addEventListener('keydown', e => { const k = this.code(e); this.keys.add(k); if (block.has(k)) e.preventDefault(); if (k === 'KeyM' && !e.repeat) this.onToggleMute?.(); if ((k === 'KeyP' || k === 'Escape') && !e.repeat) this.onPauseKey?.(); }, { capture: true });
+    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'KeyG', 'KeyB', 'KeyC', 'ShiftLeft', 'ShiftRight']);
+    window.addEventListener('keydown', e => {
+      const k = this.code(e); this.keys.add(k); if (block.has(k)) e.preventDefault(); if (e.repeat) return;
+      if (k === 'KeyM') this.onToggleMute?.(); if (k === 'KeyP' || k === 'Escape') this.onPauseKey?.();
+      if (k === 'KeyG') this.onGear?.(); if (k === 'KeyB') this.onBrake?.(); if (k === 'KeyC') this.onRecenter?.();
+    }, { capture: true });
     window.addEventListener('keyup', e => this.keys.delete(this.code(e)), { capture: true });
     window.addEventListener('blur', () => { this.clear(); this.onLockLost?.(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.onLockLost?.(); });
-    document.addEventListener('pointerlockchange', () => { const was = this.locked; this.locked = document.pointerLockElement === canvas; this.mouse.x = this.mouse.y = 0; if (was && !this.locked) this.onLockLost?.(); });
-    window.addEventListener('mousemove', e => {
-      if (this.locked) { // virtual stick from relative motion
-        this.mouse.x = clamp(this.mouse.x + e.movementX / 250); this.mouse.y = clamp(this.mouse.y + e.movementY / 250);
-      } else { this.mouse.x = (e.clientX / innerWidth) * 2 - 1; this.mouse.y = (e.clientY / innerHeight) * 2 - 1; }
-    });
+    document.addEventListener('pointerlockchange', () => { const was = this.locked; this.locked = document.pointerLockElement === canvas; if (was && !this.locked) this.onLockLost?.(); });
+    // free look: pointer-locked movement, or drag while right button held
+    window.addEventListener('mousemove', e => { if (this.locked || this.mouse.r) this.addLook(e.movementX, e.movementY); });
     canvas.addEventListener('mousedown', e => { if (e.button === 0) this.mouse.l = true; if (e.button === 2) this.mouse.r = true; canvas.focus(); });
     window.addEventListener('mouseup', e => { if (e.button === 0) this.mouse.l = false; if (e.button === 2) this.mouse.r = false; });
     window.addEventListener('contextmenu', e => e.preventDefault());
     if ('ontouchstart' in window) this.setupTouch();
   }
-  /** Fallback to e.key for layouts/browsers that give empty code. */
+  private addLook(dx: number, dy: number) { this.look.dx += dx * .005; this.look.dy += dy * .005; this.look.idle = 0; }
+  exitLock() { if (document.pointerLockElement) document.exitPointerLock(); }
+  clear() { this.keys.clear(); this.mouse.l = this.mouse.r = false; }
   private code(e: KeyboardEvent) {
     if (e.code) return e.code;
-    const k = e.key.length === 1 ? 'Key' + e.key.toUpperCase() : e.key; return k === 'Key ' ? 'Space' : k === 'Shift' ? 'ShiftLeft' : k === 'Control' ? 'ControlLeft' : k;
+    const k = e.key.length === 1 ? 'Key' + e.key.toUpperCase() : e.key; return k === 'Key ' ? 'Space' : k === 'Shift' ? 'ShiftLeft' : k;
   }
   requestLock() { try { (this.canvas.requestPointerLock as any)?.call(this.canvas)?.catch?.(() => {}); } catch {} this.canvas.focus(); }
   private setupTouch() {
     document.body.classList.add('touch');
-    document.getElementById('bPause')!.addEventListener('touchend', e => { e.preventDefault(); this.onPauseKey?.(); });
+    const tap = (id: string, fn: () => void) => document.getElementById(id)!.addEventListener('touchend', e => { e.preventDefault(); fn(); });
+    tap('bPause', () => this.onPauseKey?.()); tap('bGear', () => this.onGear?.()); tap('bBrake', () => this.onBrake?.());
     const sk = document.getElementById('stick')!, knob = document.getElementById('knob')!;
     const mv = (e: TouchEvent) => { const t = e.targetTouches[0], r = sk.getBoundingClientRect();
       this.touch.x = clamp((t.clientX - r.left - 65) / 65); this.touch.y = clamp((t.clientY - r.top - 65) / 65);
       knob.style.transform = `translate(${this.touch.x * 45}px,${this.touch.y * 45}px)`; e.preventDefault(); };
     sk.addEventListener('touchstart', mv, { passive: false }); sk.addEventListener('touchmove', mv, { passive: false });
     sk.addEventListener('touchend', () => { this.touch.x = this.touch.y = 0; knob.style.transform = ''; });
-    ([['bGun', 'gun'], ['bMsl', 'msl'], ['bThr', 'thr'], ['bBrk', 'brk']] as const).forEach(([id, k]) => {
+    ([['bGun', 'gun'], ['bMsl', 'msl'], ['bThr', 'thr'], ['bBrk', 'brk'], ['bAB', 'ab']] as const).forEach(([id, k]) => {
       const b = document.getElementById(id)!;
       b.addEventListener('touchstart', e => { (this.touch as any)[k] = true; e.preventDefault(); }, { passive: false });
       b.addEventListener('touchend', () => { (this.touch as any)[k] = false; });
     });
+    // right half of screen (outside buttons) = free look drag
+    let last: { id: number; x: number; y: number } | null = null;
+    this.canvas.addEventListener('touchstart', e => { for (const t of Array.from(e.changedTouches)) if (t.clientX > innerWidth / 2 && !last) last = { id: t.identifier, x: t.clientX, y: t.clientY }; }, { passive: true });
+    this.canvas.addEventListener('touchmove', e => { for (const t of Array.from(e.changedTouches)) if (last && t.identifier === last.id) { this.addLook((t.clientX - last.x) * 1.5, (t.clientY - last.y) * 1.5); last.x = t.clientX; last.y = t.clientY; } }, { passive: true });
+    this.canvas.addEventListener('touchend', e => { for (const t of Array.from(e.changedTouches)) if (last && t.identifier === last.id) last = null; });
   }
   private down(...c: string[]) { return c.some(k => this.keys.has(k)); }
   update(dt: number) {
-    const c = this.c, m = this.mouse;
-    if (this.locked) { m.x *= Math.pow(0.15, dt); m.y *= Math.pow(0.15, dt); } // stick recenters
-    const dz = (v: number) => Math.abs(v) < 0.06 ? 0 : v;
-    c.pitch = clamp((this.down('ArrowUp') ? 1 : 0) - (this.down('ArrowDown') ? 1 : 0) - dz(m.y) * 1.3 - this.touch.y);
-    c.roll = clamp((this.down('ArrowLeft') ? 1 : 0) - (this.down('ArrowRight') ? 1 : 0) - dz(m.x) * 1.3 - this.touch.x);
-    c.yaw = clamp((this.down('KeyD', 'KeyE') ? 1 : 0) - (this.down('KeyA', 'KeyQ') ? 1 : 0));
-    c.throttle = (this.down('KeyW', 'ShiftLeft', 'ShiftRight') || this.touch.thr ? 1 : 0) - (this.down('KeyS', 'ControlLeft', 'ControlRight') || this.touch.brk ? 1 : 0);
-    c.fireGun = m.l || this.down('Space') || this.touch.gun;
-    c.fireMissile = m.r || this.down('KeyF') || this.touch.msl;
+    const c = this.c; this.look.idle += dt; this.look.active = this.mouse.r || this.look.idle < 1.5;
+    c.pitch = clamp((this.down('ArrowDown') ? 1 : 0) - (this.down('ArrowUp') ? 1 : 0) + this.touch.y); // +1 = nose up
+    c.roll = clamp((this.down('ArrowLeft') ? 1 : 0) - (this.down('ArrowRight') ? 1 : 0) - this.touch.x); // +1 = roll left
+    c.yaw = clamp((this.down('KeyD') ? 1 : 0) - (this.down('KeyA') ? 1 : 0)); // +1 = nose right
+    c.throttle = (this.down('KeyW') || this.touch.thr ? 1 : 0) - (this.down('KeyS') || this.touch.brk ? 1 : 0);
+    c.afterburner = this.down('ShiftLeft', 'ShiftRight') || this.touch.ab;
+    c.fireGun = this.mouse.l || this.down('Space') || this.touch.gun;
+    c.fireMissile = this.down('KeyF') || this.touch.msl;
   }
 }
 export const clamp = (v: number, a = -1, b = 1) => Math.max(a, Math.min(b, v));
