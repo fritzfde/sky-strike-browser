@@ -14,7 +14,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:monos
 #stick{position:fixed;left:20px;bottom:50px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.15);z-index:4}
 #knob{position:absolute;left:45px;top:45px;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.5)}
 .tb{position:fixed;width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,.2);border:2px solid #fff;color:#fff;display:flex;align-items:center;justify-content:center;z-index:4}
-#bGun{right:20px;bottom:50px}#bMsl{right:100px;bottom:50px}#bThr{right:20px;bottom:130px}#bBrk{right:100px;bottom:130px}
+#bGun{right:20px;bottom:50px}#bMsl{right:100px;bottom:50px}#bThr{right:20px;bottom:130px}#bBrk{right:100px;bottom:130px}#bAB{right:180px;bottom:130px}#bGear{right:180px;bottom:50px}#bBrake{right:20px;bottom:210px}
 #pause{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;z-index:6}
 #pause h1{font-size:44px;color:#0ff}#pause button{font:18px monospace;margin:8px;padding:12px 22px;background:#063;color:#0f0;border:2px solid #0f0;border-radius:6px;cursor:pointer}
 #bPause{left:50%;top:10px;width:48px;height:48px;transform:translateX(-50%);font-size:18px}

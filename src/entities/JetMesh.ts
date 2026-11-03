@@ -43,7 +43,13 @@ export function buildJet(scene: Scene, hull: Color3, name: string): TransformNod
   noz.rotation.x = Math.PI / 2; noz.position.z = -7.5; noz.material = dark; noz.parent = root;
   const flame = MeshBuilder.CreateCylinder('flame', { diameterTop: 1.3, diameterBottom: 0, height: 4, tessellation: 10 }, scene);
   flame.rotation.x = Math.PI / 2; flame.position.z = -10; flame.material = mat(scene, 'flame', new Color3(1, .55, .15), true); flame.parent = root;
-  root.metadata = { flame };
+  // landing gear (nose + 2 mains); wheel bottoms at y = -GEAR_H
+  const gear = new TransformNode('gear', scene); gear.parent = root;
+  for (const [x, z] of [[0, 5.5], [-1.6, -1.5], [1.6, -1.5]]) {
+    const st = MeshBuilder.CreateCylinder('strut', { diameter: .18, height: 1.6, tessellation: 6 }, scene); st.position.set(x, -1.5, z); st.material = dark; st.parent = gear;
+    const wh = MeshBuilder.CreateCylinder('wheel', { diameter: .9, height: .35, tessellation: 12 }, scene); wh.rotation.z = Math.PI / 2; wh.position.set(x, -2.15, z); wh.material = dark; wh.parent = gear;
+  }
+  root.metadata = { flame, gear };
   for (const m of root.getChildMeshes()) m.isPickable = false;
   return root;
 }
