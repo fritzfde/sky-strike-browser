@@ -12,14 +12,14 @@ export class Input {
   /** accumulated free-look deltas (radians), consumed by the camera */
   look = { dx: 0, dy: 0, active: false, idle: 0 };
   onToggleMute?: () => void; onPauseKey?: () => void; onLockLost?: () => void;
-  onGear?: () => void; onBrake?: () => void; onRecenter?: () => void;
+  onGear?: () => void; onBrake?: () => void; onRecenter?: () => void; onView?: () => void; onSpeedBrake?: () => void; onFlaps?: () => void;
   readonly c: Controls = { pitch: 0, roll: 0, yaw: 0, throttle: 0, afterburner: false, brake: false, fireGun: false, fireMissile: false };
   constructor(private canvas: HTMLCanvasElement) {
-    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'KeyG', 'KeyB', 'KeyC', 'ShiftLeft', 'ShiftRight']);
+    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'KeyG', 'KeyB', 'KeyC', 'KeyV', 'KeyX', 'KeyL', 'ShiftLeft', 'ShiftRight']);
     window.addEventListener('keydown', e => {
       const k = this.code(e); this.keys.add(k); if (block.has(k)) e.preventDefault(); if (e.repeat) return;
       if (k === 'KeyM') this.onToggleMute?.(); if (k === 'KeyP' || k === 'Escape') this.onPauseKey?.();
-      if (k === 'KeyG') this.onGear?.(); if (k === 'KeyB') this.onBrake?.(); if (k === 'KeyC') this.onRecenter?.();
+      if (k === 'KeyG') this.onGear?.(); if (k === 'KeyB') this.onBrake?.(); if (k === 'KeyC') this.onRecenter?.(); if (k === 'KeyV') this.onView?.(); if (k === 'KeyX') this.onSpeedBrake?.(); if (k === 'KeyL') this.onFlaps?.();
     }, { capture: true });
     window.addEventListener('keyup', e => this.keys.delete(this.code(e)), { capture: true });
     window.addEventListener('blur', () => { this.clear(); this.onLockLost?.(); });
@@ -43,7 +43,7 @@ export class Input {
   private setupTouch() {
     document.body.classList.add('touch');
     const tap = (id: string, fn: () => void) => document.getElementById(id)!.addEventListener('touchend', e => { e.preventDefault(); fn(); });
-    tap('bPause', () => this.onPauseKey?.()); tap('bGear', () => this.onGear?.()); tap('bBrake', () => this.onBrake?.());
+    tap('bPause', () => this.onPauseKey?.()); tap('bGear', () => this.onGear?.()); tap('bBrake', () => this.onBrake?.()); tap('bView', () => this.onView?.()); tap('bSB', () => this.onSpeedBrake?.());
     const sk = document.getElementById('stick')!, knob = document.getElementById('knob')!;
     const mv = (e: TouchEvent) => { const t = e.targetTouches[0], r = sk.getBoundingClientRect();
       this.touch.x = clamp((t.clientX - r.left - 65) / 65); this.touch.y = clamp((t.clientY - r.top - 65) / 65);
