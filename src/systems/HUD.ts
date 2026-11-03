@@ -12,7 +12,7 @@ export class HUD {
   flash(t: string, dur = 2) { this.msg.textContent = t; this.msgT = dur; }
   update(p: Aircraft, enemies: Aircraft[], missiles: { a: Aircraft; target: Aircraft | null }[], score: number, wave: number, scene: Scene, cam: Camera, dt: number, persistent = '') {
     const agl = Math.round(p.pos.y - groundAt(p.pos.x, p.pos.z)); const incoming = missiles.some(m => m.target === p);
-    this.info.innerHTML = `SPD ${Math.round(p.speed * 3.6)} km/h<br>THR ${Math.round(p.throttle * 100)}%<br>ALT ${agl} m<br>GUN ${p.ammo} | MSL ${p.missiles}<br>SCORE ${score} | WAVE ${wave}`
+    const vs = Math.round(p.onGround ? 0 : p.vel.y); this.info.innerHTML = `SPD ${Math.round(p.speed * 3.6)} km/h<br>THR ${Math.round(p.throttle * 100)}%${p.afterburner ? ' <b style="color:#f80">AB</b>' : ''}<br>VS ${vs > 0 ? '+' : ''}${vs} m/s<br>GEAR ${p.gear ? '<b style="color:#4f4">DOWN</b>' : 'UP'} | BRK ${p.brakes ? '<b style="color:#fa4">ON</b>' : 'OFF'}${p.stalled ? '<br><b style="color:#f33">STALL</b>' : ''}<br>ALT ${agl} m<br>GUN ${p.ammo} | MSL ${p.missiles}<br>SCORE ${score} | WAVE ${wave}`
       + (agl < 100 && p.alive ? '<br><b style="color:#f44">PULL UP!</b>' : '') + (incoming ? '<br><b style="color:#f44">MISSILE!</b>' : '');
     this.hp.style.width = Math.max(0, p.hp) + '%'; this.hp.style.background = p.hp > 50 ? '#0f0' : p.hp > 25 ? '#ff0' : '#f00'; this.thr.style.width = p.throttle * 100 + '%';
     this.msgT -= dt; if (persistent) this.msg.textContent = persistent; else if (this.msgT <= 0) this.msg.textContent = '';

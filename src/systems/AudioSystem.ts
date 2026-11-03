@@ -20,8 +20,8 @@ export class AudioSystem {
   }
   suspend(on: boolean) { if (!this.ctx) return; on ? this.ctx.suspend() : this.ctx.resume(); }
   toggleMute() { this.muted = !this.muted; if (this.master) this.master.gain.value = this.muted ? 0 : .5; }
-  engine(throttle: number, alive: boolean) {
-    if (!this.eng || !this.ctx) return; const t = this.ctx.currentTime;
+  engine(throttle: number, alive: boolean, ab = false) {
+    if (!this.eng || !this.ctx) return; const t = this.ctx.currentTime; throttle = Math.min(1.6, throttle + (ab ? .6 : 0));
     this.eng.osc.frequency.setTargetAtTime(45 + throttle * 90, t, .1); this.eng.osc2.frequency.setTargetAtTime(46 + throttle * 92, t, .1);
     this.eng.noiseF.frequency.setTargetAtTime(400 + throttle * 1600, t, .1); this.eng.g.gain.setTargetAtTime(alive ? .06 + throttle * .12 : 0, t, .2);
   }

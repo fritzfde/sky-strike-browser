@@ -50,14 +50,14 @@ export class WeaponSystem {
     if (c.fireGun && a.gunCd <= 0 && a.ammo > 0) {
       a.gunCd = a.isPlayer ? .06 : .15; a.ammo--; const b = (a.team === 'red' ? this.bulletsRed : this.bullets).acquire();
       b.owner = a; b.life = 2; b.m.position.copyFrom(a.pos).addInPlace(a.fwd.scale(10)).addInPlaceFromFloats((Math.random() - .5) * .8, (Math.random() - .5) * .8, 0);
-      b.m.rotationQuaternion = a.rot.clone(); b.vel.copyFrom(a.fwd).scaleInPlace(a.speed + 750);
+      b.m.rotationQuaternion = a.rot.clone(); const spr = a.isPlayer ? .004 : (1 - a.skill) * .03 + .006; b.vel.copyFrom(a.fwd).addInPlaceFromFloats((Math.random() - .5) * spr, (Math.random() - .5) * spr, (Math.random() - .5) * spr).normalize().scaleInPlace(a.speed + 750);
       if (a.isPlayer) this.audio.gun();
     }
     if (c.fireMissile && a.missileCd <= 0 && a.missiles > 0) { a.missileCd = 1; a.missiles--; this.launch(a, a.lockTime >= LOCK_TIME ? a.lockTarget : null); }
   }
   launch(a: Aircraft, target: Aircraft | null) {
     const m = this.missiles.acquire(); m.owner = a; m.target = target; m.life = a.isPlayer ? 8 : 6;
-    m.a.pos.copyFrom(a.pos).addInPlace(a.up.scale(-2)); m.a.rot.copyFrom(a.rot); m.a.speed = a.speed + 120; m.a.alive = true;
+    m.a.pos.copyFrom(a.pos).addInPlace(a.up.scale(-2)); m.a.rot.copyFrom(a.rot); m.a.speed = a.speed + 80; m.a.alive = true;
     m.trail = this.fx.startTrail(m.a.pos); if (a.isPlayer || target?.isPlayer) this.audio.missile();
   }
   incomingFor(a: Aircraft) { return this.missiles.active.some(m => m.target === a); }
