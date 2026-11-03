@@ -1,0 +1,10 @@
+import '@babylonjs/core/Meshes/instancedMesh';
+import '@babylonjs/core/Particles/particleSystemComponent';
+import '@babylonjs/core/Shaders/particles.vertex';
+import '@babylonjs/core/Shaders/particles.fragment';
+import '@babylonjs/core/Materials/standardMaterial';
+import '@babylonjs/core/Shaders/default.vertex';
+import '@babylonjs/core/Shaders/default.fragment';
+import { Game } from './core/Game';
+const g = new Game(document.getElementById('c') as HTMLCanvasElement);
+(window as any).__game = g;
