@@ -34,18 +34,18 @@ export class HUD {
   update(p: Aircraft, enemies: Aircraft[], missiles: { a: Aircraft; target: Aircraft | null }[], score: number, wave: number, scene: Scene, cam: Camera, dt: number, persistent = '') {
     const agl = Math.round((p.pos.y - groundAt(p.pos.x, p.pos.z)) * FT); const incoming = missiles.some(m => m.target === p);
     const vs = Math.round((p.onGround ? 0 : p.vel.y) * FPM / 10) * 10, b = (t: string, c: string) => `<b style="color:${c}">${t}</b>`;
-    const warnTxt = !p.onGround && p.stalled ? b(Math.abs(p.spinRate) > .8 ? 'SPIN' : 'STALL', '#f33') : !p.onGround && p.stallWarn ? b('AOA HIGH', '#fa0') : '';
+    const warnTxt = !p.onGround && p.stalled ? b(Math.abs(p.spinRate) > .8 ? 'SPIN' : 'STALL', '#f33') : !p.onGround && p.stallWarn ? b('AOA HIGH', '#fa0') : p.flapOver > 0 ? b('FLAP OVERSPEED', '#fa0') : '';
     const ball = (() => { const i = Math.round(Math.max(-1, Math.min(1, p.onGround ? 0 : p.beta * 6)) * 3) + 3; return '·······'.slice(0, i) + '●' + '·······'.slice(i + 1, 7); })();
     this.cl.style.display = this.cockpit ? 'none' : 'block';
     const tp = Math.round(p.throttle * 100), tcol = p.abLevel > .5 ? '#f80' : tp > 90 ? '#ff0' : tp > 60 ? '#0f0' : '#0af';
     this.cl.innerHTML = `<div class="hpb"><div style="width:${Math.max(0, p.hp)}%;background:${p.hp > 50 ? '#0f0' : p.hp > 25 ? '#ff0' : '#f00'}"></div><span>HP ${Math.max(0, Math.round(p.hp))}%</span></div>`
       + `<div class="tbar"><div class="tab" style="height:${p.abLevel * 100}%"></div><div class="tfill" style="height:${tp * .8}%;background:${tcol}"></div><div class="tmk"></div><span>${p.abLevel > .5 ? 'AB' : tp + '%'}</span></div>`
       + `<span class="big">${Math.round(p.speed * KT)}<small>kt</small></span><span class="big">${Math.round(p.pos.y * FT)}<small>ft</small></span><br>`
-      + `GUN ${p.ammo} · <b class="cnt">MSL ${p.irMsl}×IR ${p.rdrMsl}×RDR</b> · <b class="cnt" style="color:${p.flares > 5 ? '#0f0' : '#f80'}">FLR ${p.flares}</b><br>α ${(p.aoa * 57.3).toFixed(0)}° · G ${p.gLoad.toFixed(1)} · ${ball}${warnTxt ? '<br>' + warnTxt : ''}`
+      + `GUN ${p.ammo} · <b class="cnt">MSL ${p.irMsl}×IR ${p.rdrMsl}×RDR</b> · <b class="cnt" style="color:${p.flares > 5 ? '#0f0' : '#f80'}">FLR ${p.flares}</b><br>FLP ${p.flapName} · α ${(p.aoa * 57.3).toFixed(0)}° · G ${p.gLoad.toFixed(1)} · ${ball}${warnTxt ? '<br>' + warnTxt : ''}`
       + (agl < 300 && !p.onGround && vs < -1500 && p.alive ? '<br>' + b('PULL UP!', '#f44') : '') + (p.threat === 2 ? '<br>' + `<b class="blink" style="color:#f22">MISSILE</b>` : p.threat === 1 ? '<br>' + b('LOCK', '#fa0') : '');
     const ta = $('threat'); ta.style.display = p.threat && p.alive ? 'block' : 'none'; ta.style.transform = `translate(-50%,-50%) rotate(${p.threatDir}rad) translateY(-130px)`; ta.style.color = p.threat === 2 ? '#f22' : '#fa0';
     this.info.innerHTML = `AGL ${agl} ft · VS ${vs > 0 ? '+' : ''}${vs} ft/min<br>AoA ${(p.aoa * 57.3).toFixed(1)}° · β ${(p.beta * 57.3).toFixed(0)}° · M ${(p.speed / 340).toFixed(2)}<br>`
-      + `GEAR ${p.gear ? b('DN', '#4f4') : 'UP'} · FLAPS ${p.flaps ? b('DN', '#4f4') : 'UP'} · SPD BRK ${p.speedbrake ? b('OUT', '#fa4') : 'IN'} · BRK ${p.brakes ? b('ON', '#fa4') : 'OFF'}`
+      + `GEAR ${p.gear ? b('DN', '#4f4') : 'UP'} · FLAPS ${p.flapMode ? b(p.flapName, '#4f4') : 'AUTO'} · SPD BRK ${p.speedbrake ? b('OUT', '#fa4') : 'IN'} · BRK ${p.brakes ? b('ON', '#fa4') : 'OFF'}`
       + `<br>SCORE ${score} | WAVE ${wave}`;
     this.hp.style.width = Math.max(0, p.hp) + '%'; this.hp.style.background = p.hp > 50 ? '#0f0' : p.hp > 25 ? '#ff0' : '#f00'; this.thr.style.width = p.throttle * 100 + '%';
     this.msgT -= dt; if (persistent) this.msg.textContent = persistent; else if (this.msgT <= 0) this.msg.textContent = '';

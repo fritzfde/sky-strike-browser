@@ -8,3 +8,4 @@ import '@babylonjs/core/Shaders/default.fragment';
 import { Game } from './core/Game';
 const g = new Game(document.getElementById('c') as HTMLCanvasElement);
 (window as any).__game = g;
+import { stallSpeed } from './systems/FlightSystem'; (window as any).__stall = stallSpeed;

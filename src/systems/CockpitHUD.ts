@@ -68,7 +68,7 @@ export class CockpitHUD {
     // ---- data blocks ----
     const aoaDeg = p.aoa * 180 / Math.PI, bl = (lines: string[], x: number, y: number, align: CanvasTextAlign) => { g.textAlign = align; lines.forEach((s, i) => g.fillText(s, x, y + i * fs * 1.35)); };
     bl([`G ${p.gLoad.toFixed(1)}`, `α ${aoaDeg.toFixed(1)}°`, `M ${(p.speed / 340).toFixed(2)}`, `THR ${Math.round(p.throttle * 100)}%${p.abLevel > .5 ? ' AB' : ''}`], cx - W * .3, cy + H * .3, 'left');
-    bl([p.gear ? 'GEAR DN' : 'GEAR UP', p.flaps ? 'FLAPS' : '', p.speedbrake ? 'SPD BRK' : '', p.brakes ? 'BRAKES' : '', `GUN ${p.ammo}  MSL ${p.missiles}`].filter(Boolean), cx + W * .3, cy + H * .3, 'right');
+    bl([p.gear ? 'GEAR DN' : 'GEAR UP', p.flapOver > 0 ? 'FLAP OVERSPEED' : 'FLAPS ' + p.flapName, p.speedbrake ? 'SPD BRK' : '', p.brakes ? 'BRAKES' : '', `GUN ${p.ammo}  MSL ${p.missiles}`].filter(Boolean), cx + W * .3, cy + H * .3, 'right');
     g.textAlign = 'center'; g.fillText(`HP ${Math.max(0, Math.round(p.hp))}% · GUN ${p.ammo} · IR ${p.irMsl} RDR ${p.rdrMsl} · FLR ${p.flares}`, cx, cy + H * .1);
     { const bx = cx - W * .36, bh = H * .3, by = cy + H * .05, tp = p.throttle, ab = p.abLevel; // throttle bar: 0-100 % + AB zone on top
       g.strokeRect(bx, by - bh, 16, bh); line(bx - 4, by - bh * .8, bx + 20, by - bh * .8);
