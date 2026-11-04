@@ -69,9 +69,22 @@ export class CockpitHUD {
     const aoaDeg = p.aoa * 180 / Math.PI, bl = (lines: string[], x: number, y: number, align: CanvasTextAlign) => { g.textAlign = align; lines.forEach((s, i) => g.fillText(s, x, y + i * fs * 1.35)); };
     bl([`G ${p.gLoad.toFixed(1)}`, `α ${aoaDeg.toFixed(1)}°`, `M ${(p.speed / 340).toFixed(2)}`, `THR ${Math.round(p.throttle * 100)}%${p.abLevel > .5 ? ' AB' : ''}`], cx - W * .3, cy + H * .3, 'left');
     bl([p.gear ? 'GEAR DN' : 'GEAR UP', p.flaps ? 'FLAPS' : '', p.speedbrake ? 'SPD BRK' : '', p.brakes ? 'BRAKES' : '', `GUN ${p.ammo}  MSL ${p.missiles}`].filter(Boolean), cx + W * .3, cy + H * .3, 'right');
+    g.textAlign = 'center'; g.fillText(`HP ${Math.max(0, Math.round(p.hp))}% · GUN ${p.ammo} · IR ${p.irMsl} RDR ${p.rdrMsl} · FLR ${p.flares}`, cx, cy + H * .1);
+    { const bx = cx - W * .36, bh = H * .3, by = cy + H * .05, tp = p.throttle, ab = p.abLevel; // throttle bar: 0-100 % + AB zone on top
+      g.strokeRect(bx, by - bh, 16, bh); line(bx - 4, by - bh * .8, bx + 20, by - bh * .8);
+      g.save(); g.fillStyle = ab > .5 ? '#f80' : tp > .9 ? '#ff0' : g.strokeStyle as string; g.fillRect(bx + 2, by - bh * .8 * tp, 12, bh * .8 * tp);
+      if (ab > 0) { g.fillStyle = '#f80'; g.fillRect(bx + 2, by - bh * .8 - bh * .2 * ab, 12, bh * .2 * ab); } g.restore();
+      g.textAlign = 'center'; g.fillText(ab > .5 ? 'AB' : Math.round(tp * 100) + '%', bx + 8, by + fs * 1.2); }
+    // ---- slip/skid ball (step on the ball) + AoA vs critical ----
+    { const by = cy + H * .38, bw = W * .06, bx = cx + Math.max(-1, Math.min(1, (p.onGround ? 0 : p.beta) * 6)) * bw;
+      g.beginPath(); g.moveTo(cx - bw - 8, by - 9); g.quadraticCurveTo(cx, by + 14, cx + bw + 8, by - 9); g.stroke();
+      line(cx - 9, by - 8, cx - 9, by + 10); line(cx + 9, by - 8, cx + 9, by + 10);
+      g.beginPath(); g.arc(bx, by + 1, 7, 0, Math.PI * 2); g.fill();
+      g.textAlign = 'center'; g.fillText(`α ${aoaDeg.toFixed(1)}° / ${(ALPHA_CRIT * 180 / Math.PI).toFixed(0)}°  β ${(p.beta * 180 / Math.PI).toFixed(0)}°`, cx, by + 28); }
     // ---- warnings ----
     g.textAlign = 'center'; g.font = `bold ${fs * 1.6}px monospace`; g.fillStyle = '#f33';
-    const warn = [p.alive && !p.onGround && p.aoa > ALPHA_CRIT * .9 ? 'STALL' : p.stalled && !p.onGround ? 'LOW SPEED' : '', !p.onGround && agl < 500 && vs < -1500 ? 'PULL UP' : '', incoming ? 'MISSILE' : '', p.gLoad > 8.5 ? 'OVER-G' : ''].filter(Boolean);
+    const warn = [p.alive && !p.onGround && p.stalled ? (Math.abs(p.spinRate) > .8 ? 'SPIN' : 'STALL') : p.alive && !p.onGround && p.stallWarn ? 'AOA' : '', !p.onGround && agl < 500 && vs < -1500 ? 'PULL UP' : '', p.threat === 2 ? ((performance.now() / 250 | 0) % 2 ? 'MISSILE' : '') : p.threat === 1 ? 'LOCK' : '', p.gLoad > 8.5 ? 'OVER-G' : ''].filter(Boolean);
+    if (p.threat) { g.save(); g.translate(cx, cy); g.rotate(p.threatDir); g.fillStyle = p.threat === 2 ? '#f33' : '#fa0'; g.beginPath(); g.moveTo(0, -H * .3); g.lineTo(-12, -H * .3 + 22); g.lineTo(12, -H * .3 + 22); g.fill(); g.restore(); g.fillStyle = '#f33'; }
     warn.forEach((w, i) => g.fillText(w, cx, cy + H * .17 + i * fs * 2));
   }
 }

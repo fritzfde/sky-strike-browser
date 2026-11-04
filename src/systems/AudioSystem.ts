@@ -37,6 +37,13 @@ export class AudioSystem {
   gun() { this.shot(.07, 1, 1, .25, 'noise', 3500); this.shot(.06, 160, 60, .2, 'square', 900); }
   missile() { this.shot(1.2, .6, 1, .35, 'noise', 5000); this.shot(.8, 300, 900, .08, 'sawtooth', 3000); }
   explosion(vol = 1) { this.shot(1.8, .35, 1, .8 * vol, 'noise', 1800); this.shot(1, 90, 30, .5 * vol, 'sine', 400); }
+  flare() { this.shot(.25, .8, 1, .3, 'noise', 2500); this.shot(.12, 500, 200, .12, 'square', 1500); }
+  /** threat tone: 1 = enemy radar lock (slow two-tone), 2 = missile launched (fast high) */
+  threat(dt: number, lvl: number) {
+    if (!lvl) { this.thrT = 0; return; } this.thrT -= dt;
+    if (this.thrT <= 0) { this.thrT = lvl === 2 ? .12 : .5; lvl === 2 ? this.shot(.07, 1700, 1700, .12, 'square', 5000) : this.shot(.2, 1000, 1000, .1, 'sine', 4000); }
+  }
+  private thrT = 0;
   hit() { this.shot(.08, 1.5, 1, .2, 'noise', 6000); }
   /** state: 0 none, 1 seeking (slow beeps), 2 locked (solid tone) */
   lock(state: 0 | 1 | 2, time: number) {

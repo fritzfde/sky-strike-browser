@@ -9,9 +9,12 @@ export class Aircraft {
   groundPitch = 0; heading = 0; everAirborne = false; skill = .5; crashReason = '';
   /** engine spool (0..1), afterburner light (0..1), flaps/speed brake commanded & actual position, smoothed stick */
   n = .6; abLevel = 0; flaps = true; flapPos = 1; speedbrake = false; sbPos = 0; sm = { p: 0, r: 0, y: 0 };
-  aoa = 0; beta = 0; gLoad = 1; touchdownAt: Vector3 | null = null;
+  aoaLimiter = true; aoa = 0; beta = 0; stallWarn = false; spinRate = 0; wingDrop = 0; buffet = 0; gLoad = 1; touchdownAt: Vector3 | null = null;
   speed = 120; throttle = .6; hp = 100; maxHp = 100; alive = true;
-  ammo = 500; missiles = 6; gunCd = 0; missileCd = 0; respawnT = 0;
+  ammo = 510; irMsl = 4; rdrMsl = 2; lastHit = -1e9;
+  /** total missiles (4 × IR short-range + 2 × radar medium-range); assigning refills IR first */
+  get missiles() { return this.irMsl + this.rdrMsl; } set missiles(v: number) { this.irMsl = Math.min(4, v); this.rdrMsl = Math.max(0, Math.min(2, v - 4)); }
+  flares = 30; flareCd = 0; threat = 0; threatDir = 0; gunCd = 0; missileCd = 0; respawnT = 0;
   lockTarget: Aircraft | null = null; lockTime = 0;
   ctrl = { pitch: 0, roll: 0, yaw: 0, throttle: 0, afterburner: false, brake: false, fireGun: false, fireMissile: false };
   readonly fwd = new Vector3(); readonly up = new Vector3(); readonly right = new Vector3();
