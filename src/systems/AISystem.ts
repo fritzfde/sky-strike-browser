@@ -17,8 +17,19 @@ export class AISystem {
       c.roll = clamp((curRoll - wantRoll) * 1.5) * agil;
       c.pitch = clamp(l.y * 3 + Math.abs(l.x) * 1.2 * (Math.abs(curRoll) > .3 ? 1 : 0)) * agil;
       c.yaw = clamp(l.x * 3) * agil;
-      const v = a.vel.length(); a.throttle = Math.max(0, Math.min(1, (165 - v) / 40 + .75)); c.throttle = 0; c.afterburner = v < 115;
-      const d = enemy ? Vector3.Distance(a.pos, enemy.pos) : 1e9;
+      const v = a.vel.length(), d = enemy ? Vector3.Distance(a.pos, enemy.pos) : 1e9, x = a as any;
+      // slow-speed fight: if a bandit sits close on our tail, sometimes chop power + speed brake to force an overshoot (may stall doing it)
+      const behind = !!enemy && d < 900 && Vector3.Dot(enemy.pos.subtract(a.pos), a.fwd) < -d * .5;
+      x.slowT = Math.max(0, (x.slowT || 0) - dt);
+      if (behind && x.slowT <= 0 && v > 90 && agl > 600 && Math.random() < dt * sk * .25) x.slowT = 4 + 3 * sk;
+      const slow = x.slowT > 0 && v > 55 && agl > 400;
+      a.aoaLimiter = !slow;                                      // in the scissors the bot flies at the edge of the stall like the player can
+      if (slow) { a.throttle = .1; c.afterburner = false; a.speedbrake = true; c.pitch = Math.max(c.pitch, .9); }
+      else { a.speedbrake = false; a.throttle = Math.max(0, Math.min(1, (165 - v) / 40 + .75)); c.afterburner = v < 115 || a.stalled; if (a.stalled) c.pitch = -.6; }
+      c.throttle = 0;
+      // closing fast on a slow target: skilled pilots brake a little (low skill → overshoot)
+      const ahead = !!enemy && d < 700 && l.z > .8, closure = enemy ? v - enemy.vel.length() : 0;
+      if (!slow && ahead && closure > 40 && Math.random() < sk * .6) { a.throttle = .3; c.afterburner = false; a.speedbrake = closure > 70 && sk > .7; }
       c.fireGun = !!enemy && l.z > .997 - (1 - sk) * .01 && d < 700 + sk * 300 && Math.random() < .4 + sk * .6;
       c.fireMissile = !!enemy && sk > .4 && a.lockTime > 2.5 - sk && d < 2200 && Math.random() < dt * sk * .3;
     }

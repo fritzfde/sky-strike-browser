@@ -6,14 +6,15 @@ const tq = new Quaternion();
 /** Local-axis rotation (post-multiply). Babylon is left-handed: +X right, +Y up, +Z forward. Rotation about X: negative = nose up. */
 export function rotLocal(a: Aircraft, axis: Vector3, ang: number) { Quaternion.RotationAxisToRef(axis, ang, tq); a.rot.multiplyInPlace(tq); }
 export const AX = new Vector3(1, 0, 0), AY = new Vector3(0, 1, 0), AZ = new Vector3(0, 0, 1);
-// ---------- airframe (light-weight F-16-class, SI units internally) ----------
-export const G = 9.81, MASS = 12000, WING_AREA = 28, GEAR_H = 2.6, BELLY_H = 1.4;
-export const T_MIL = 64000, T_AB = 42000, T_IDLE = .04;            // N; T/W with AB ≈ 0.9
-export const CL_ALPHA = 4.4, ALPHA_CRIT = .42, CL_FLAPS = .35;      // per rad; ~24° critical AoA (LEX-type wing, CLmax ≈ 1.85)
+// ---------- airframe: F-16C Block 50 (F110-GE-129), SI units internally — see README "Aircraft data" ----------
+export const G = 9.81, MASS = 12020, WING_AREA = 27.87, GEAR_H = 2.6, BELLY_H = 1.4;   // 26,500 lb combat T/O · 300 ft²
+export const T_MIL = 76310, T_AB = 54910, T_IDLE = .04;            // N: 17,155 lbf MIL, 29,500 lbf max AB (static, SL) → T/W 1.11
+export const CL_ALPHA = 4.45, ALPHA_LIN = .38, ALPHA_CRIT = .52, CL_MAX = 2.0, CL_FLAPS = .35; // per rad; linear to 22°, CLmax 2.0 at 30° (LEX vortex lift)
+export const ALPHA_LIM = 25 / 57.2958, ALPHA_WARN = 26 / 57.2958, ROT_PITCH = .18; // FLCS AoA limiter 25°; warning only if the limiter is exceeded; 10.3° rotation attitude
 const CD0 = .021, K_IND = .11, CD_GEAR = .02, CD_FLAPS = .03, CD_SB = .075;
-const CY_BETA = 1.6, DIHEDRAL = 1.3, BETA_RUD = .21, WARN_MARGIN = .045; // side force / dihedral / full-rudder β (≈12°) / stall-warning margin (2.5°)
+const CY_BETA = 1.6, DIHEDRAL = 1.3, BETA_RUD = .21; // side force / dihedral / full-rudder β (≈12°)
 const MU_ROLL = .025, MU_BRAKE = .42;
-export const V_ROTATE = 62;                                         // m/s (≈120 kt) earliest rotation
+export const V_ROTATE = 77.2;                                       // m/s (150 kt): stabilator can lift the nosewheel
 export const SAFE_LAND = { maxSink: 5, maxSpeed: 100, maxBankDeg: 12, minPitchDeg: -4, maxPitchDeg: 18 };
 export const KT = 1.943844, FT = 3.28084, NM = 1 / 1852, FPM = 196.85;
 const DEG = 180 / Math.PI, W = MASS * G;
@@ -23,11 +24,19 @@ export const rho = (y: number) => 1.225 * Math.exp(-Math.max(0, y) / 9000);
 /** lift coefficient vs AoA: linear to critical AoA, then post-stall drop */
 export function liftCoef(alpha: number, flaps: number) {
   const s = Math.sign(alpha), aa = Math.abs(alpha);
-  const cl = aa <= ALPHA_CRIT ? CL_ALPHA * aa : CL_ALPHA * ALPHA_CRIT * Math.max(.45, 1 - (aa - ALPHA_CRIT) * 2.2);
+  const c0 = CL_ALPHA * ALPHA_LIN, cl = aa <= ALPHA_LIN ? CL_ALPHA * aa : aa <= ALPHA_CRIT ? CL_MAX - (CL_MAX - c0) * ((ALPHA_CRIT - aa) / (ALPHA_CRIT - ALPHA_LIN)) ** 2
+    : CL_MAX * Math.max(.45, 1 - (aa - ALPHA_CRIT) * 2.2);
   return s * cl + CL_FLAPS * flaps * Math.max(0, Math.cos(alpha));
 }
 /** 1-g stall speed (m/s) for the current config */
-export const stallSpeed = (a: Aircraft, y = a.pos.y) => Math.sqrt(2 * W / (rho(y) * WING_AREA * (CL_ALPHA * ALPHA_CRIT + CL_FLAPS * a.flapPos)));
+export const stallSpeed = (a: Aircraft, y = a.pos.y) => vAt(ALPHA_LIM, a.flapPos, y);
+/** 1-g speed (m/s) at a given AoA / flap position / altitude */
+export const vAt = (alpha: number, flap: number, y = 0, n = 1) => Math.sqrt(2 * n * W / (rho(y) * WING_AREA * liftCoef(alpha, flap)));
+/** installed thrust: altitude lapse (ρ^0.75) + ram recovery with Mach (FADEC -129 holds thrust across the envelope) */
+export const thrustAt = (n: number, ab: number, y: number, mach: number) => (T_MIL * (T_IDLE + (1 - T_IDLE) * n) + T_AB * ab) * Math.pow(rho(y) / 1.225, .75) * (1 + .3 * mach * mach);
+/** wave drag: rise from M0.85, peak 0.045 at M1.1, easing to 0.03 at M2 */
+const wave = (m: number) => m < .85 ? 0 : m < 1.1 ? .045 * ((m - .85) / .25) ** 2 : Math.max(.03, .045 - (m - 1.1) * .0167);
+export const dragCoefOf = (cl: number, mach: number, gear: boolean, flap: number, sb = 0, beta = 0) => CD0 + K_IND * cl * cl + (gear ? CD_GEAR : 0) + CD_FLAPS * flap + CD_SB * sb + wave(mach) + 1.3 * beta * beta;
 const toward = (v: number, t: number, r: number) => v + Math.max(-r, Math.min(r, t - v));
 /**
  * Flight model (per aircraft, per frame):
@@ -57,9 +66,9 @@ export class FlightSystem {
       this.animate(a);
     }
   }
-  thrust(a: Aircraft) { return (T_MIL * (T_IDLE + (1 - T_IDLE) * a.n) + T_AB * a.abLevel) * Math.pow(rho(a.pos.y) / 1.225, .75); }
+  thrust(a: Aircraft) { return thrustAt(a.n, a.abLevel, a.pos.y, a.vel.length() / 340); }
   dragCoef(a: Aircraft, cl: number, mach: number, beta = 0) {
-    return CD0 + K_IND * cl * cl + (a.gear ? CD_GEAR : 0) + CD_FLAPS * a.flapPos + CD_SB * a.sbPos + Math.min(.05, 2.5 * Math.max(0, mach - .85) ** 2) + 1.3 * beta * beta;
+    return dragCoefOf(cl, mach, a.gear, a.flapPos, a.sbPos, beta);
   }
   private air(a: Aircraft, dt: number) {
     a.updateAxes();
@@ -71,8 +80,9 @@ export class FlightSystem {
     const cl = liftCoef(alpha, a.flapPos), L = qS * cl, sa = Math.sin(Math.min(1.4, Math.abs(alpha))), sc = Math.sin(ALPHA_CRIT);
     const D = qS * (this.dragCoef(a, cl, mach, beta) + (Math.abs(alpha) > ALPHA_CRIT ? 4.5 * (sa * sa - sc * sc) : 0)); // post-stall: flat-plate drag
     a.aoa = alpha; a.beta = beta; a.gLoad = L / W;
-    a.stalled = alpha > ALPHA_CRIT; a.stallWarn = alpha > ALPHA_CRIT - WARN_MARGIN;   // warning = AoA within ~2.5° of critical
-    a.buffet = toward(a.buffet, Math.max(0, Math.min(1, (alpha - (ALPHA_CRIT - .03)) * 12)), dt * 4);
+    // stall/warning are purely AoA (body vs velocity), with hysteresis; ignored at very low airspeed where AoA is meaningless (tail slide → stalled anyway via alpha)
+    a.stalled = a.stalled ? alpha > ALPHA_CRIT - .03 : alpha > ALPHA_CRIT; a.stallWarn = a.stallWarn ? alpha > ALPHA_WARN - .02 : alpha > ALPHA_WARN;
+    a.buffet = toward(a.buffet, Math.max(0, Math.min(1, (alpha - (ALPHA_LIM - .07)) * 5)), dt * 4); // buffet ramps from 21° up to stall
     // ---- forces ----
     const lift = this.t1.copyFrom(a.up).subtractInPlace(vd.scale(Vector3.Dot(a.up, vd))).normalize().scaleInPlace(L * Math.cos(beta) ** 2);
     const side = this.t2.copyFrom(a.right).subtractInPlace(vd.scale(Vector3.Dot(a.right, vd))).normalize().scaleInPlace(-qS * CY_BETA * beta);
@@ -86,10 +96,11 @@ export class FlightSystem {
     // ---- pitch: fly-by-wire G/AoA command. Limiter: 9 G and AoA ≈ crit−3.4°; above ~220 kt full aft stick gives 9 G (or the AoA cap) without stalling.
     //      Below ~220 kt the AoA limit fades out (up to crit+4° at ≤175 kt) so a slow, full-aft-stick pull CAN stall and spin. ----
     const sm = a.sm, auth = Math.min(1, Math.max(.12, q / 6125)), perG = W / (qS * CL_ALPHA), flapA = CL_FLAPS * a.flapPos / CL_ALPHA;
-    const deep = alpha > ALPHA_CRIT, sAuth = deep ? .45 : 1;                          // separated flow → control authority drops
-    const a1g = Math.min(ALPHA_CRIT * .9, perG - flapA), aMax = Math.min(a.aoaLimiter ? ALPHA_CRIT * .85 : ALPHA_CRIT - .06 + .13 * Math.max(0, Math.min(1, (113 - v) / 21)), 9 * perG - flapA), aNeg = Math.max(-.15, -3 * perG - flapA);
+    const deep = alpha > ALPHA_CRIT, sAuth = deep ? .45 : 1, lim = (a.aoaLimiter ? ALPHA_LIM * .85 : ALPHA_LIM) + .13 * Math.max(0, Math.min(1, (88 - v) / 16)); // slow-speed edge: below ~170 kt nose authority beats the limiter (to ~32° by 140 kt) → you CAN stall in a slow fight                          // separated flow → control authority drops
+    // F-16 FLCS: G command limited to +9 / −3 and AoA limited to 25° (also when rolling: limiter acts on α itself, every frame, any attitude)
+    const a1g = Math.min(lim * .9, perG - flapA), aMax = Math.max(0, Math.min(lim, 9 * perG - flapA)), aNeg = Math.max(-.15, -3 * perG - flapA);
     const aCmd = sm.p >= 0 ? a1g + sm.p * (aMax - a1g) : a1g + -sm.p * (aNeg - a1g);
-    const pr = Math.max(-.6, Math.min(.6, (aCmd - alpha) * 3.5 * auth * sAuth));
+    const pr = Math.max(-.6, Math.min(.6, (aCmd - alpha) * 3.5 * auth * sAuth - (alpha > lim ? (alpha - lim) * 6 : 0) * sAuth - Math.max(0, a.gLoad - 9) * .25)); // extra nose-down if α overshoots the limit
     rotLocal(a, AX, -pr * dt);
     if (deep) rotLocal(a, AX, (alpha - ALPHA_CRIT) * (Math.abs(a.spinRate) > .8 ? .4 : 1.6) * dt); // nose drop (weaker once spinning)
     // ---- stall wing drop (asymmetric, biased by sideslip & aileron) ----
@@ -114,7 +125,7 @@ export class FlightSystem {
     rotLocal(a, AY, (beta * (deep ? .5 : 1) + sm.y * BETA_RUD) * 3.0 * rAuth * dt);
     a.rot.normalize(); a.updateAxes();
     if (a.pos.y > 15000) { a.pos.y = 15000; a.vel.y = Math.min(0, a.vel.y); }
-    const lim = 5800; a.pos.x = Math.max(-lim, Math.min(lim, a.pos.x)); a.pos.z = Math.max(-lim, Math.min(lim, a.pos.z));
+    const bnd = 5800; a.pos.x = Math.max(-bnd, Math.min(bnd, a.pos.x)); a.pos.z = Math.max(-bnd, Math.min(bnd, a.pos.z));
     const gy = groundAt(a.pos.x, a.pos.z);
     if (a.pos.y < gy + (a.gear ? GEAR_H : BELLY_H)) this.touchdown(a, gy);
   }
@@ -138,8 +149,8 @@ export class FlightSystem {
     s += (this.thrust(a) - qS * this.dragCoef(a, cl, s / 340) - fric) / MASS * dt;
     s = Math.max(0, s);
     a.heading += sm.y * .6 * Math.min(1, s / 8) * Math.max(.15, 1 - s / 70) * dt; // nosewheel steering, weaker at speed
-    const want = sm.p > 0 && s > V_ROTATE ? -.22 * sm.p : 0;                    // rotate (≈7°/s) once past Vr
-    a.groundPitch = toward(a.groundPitch, want, .13 * dt);
+    const want = sm.p > .2 && s > V_ROTATE * (1 - .1 * a.flapPos) ? -ROT_PITCH * Math.min(1, sm.p * 1.25) : 0; // nosewheel lifts at VR with back stick, rotate ≈5°/s to 10°
+    a.groundPitch = toward(a.groundPitch, want, (want < a.groundPitch ? .14 : .15) * dt);
     Quaternion.RotationYawPitchRollToRef(a.heading, a.groundPitch, 0, a.rot);
     a.vel.set(Math.sin(a.heading) * s, 0, Math.cos(a.heading) * s);
     a.pos.addInPlace(a.vel.scale(dt));
@@ -160,4 +171,22 @@ export class FlightSystem {
     const fl = a.flame, t = a.n + a.abLevel * .9;
     fl.scaling.y = .15 + t * (0.8 + Math.random() * .2); fl.scaling.x = fl.scaling.z = .5 + t * .35; fl.setEnabled(t > .05);
   }
+}
+
+/** V-speeds computed from this exact model (sea level, combat weight). m/s */
+export function vSpeeds() {
+  const vR = V_ROTATE * (1 - .1 * .5), vLof = vAt(ROT_PITCH, .5), vs1 = vAt(ALPHA_LIM, 0), vs0 = vAt(ALPHA_LIM, 1), vApp = vAt(13 / 57.2958, 1);
+  // corner: lowest speed where 9 G is available at the AoA limit
+  const corner = vAt(ALPHA_LIM, 0, 0, 9);
+  let vx = 0, vy = 0, bx = -1, by = -1, vxM = 0, vyM = 0, bxM = -1, byM = -1, vmaxSL = 0, vmax12 = 0;
+  for (let v = 60; v < 800; v += 1) {
+    for (const ab of [1, 0]) {
+      const m = v / 340, q = .6125 * v * v, cl = W / (q * WING_AREA), ex = thrustAt(1, ab, 0, m) - q * WING_AREA * dragCoefOf(cl, m, false, 0);
+      if (ab) { if (ex / W > bx) { bx = ex / W; vx = v; } if (ex * v / W > by) { by = ex * v / W; vy = v; } if (ex > 0) vmaxSL = v; }
+      else { if (ex / W > bxM) { bxM = ex / W; vxM = v; } if (ex * v / W > byM) { byM = ex * v / W; vyM = v; } }
+    }
+    const r = rho(12192), m = v / 340, q = .5 * r * v * v, cl = W / (q * WING_AREA);
+    if (thrustAt(1, 1, 12192, m) - q * WING_AREA * dragCoefOf(cl, m, false, 0) > 0) vmax12 = v;
+  }
+  return { vs0, vs1, vR, vLof, vApp, vx, vy, roc: by, vxM, vyM, rocM: byM, corner, vmaxSL, vmax12 };
 }

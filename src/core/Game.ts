@@ -1,3 +1,5 @@
+import { GEffects } from '../systems/GEffects';
+import { vSpeeds, KT as KTS } from '../systems/FlightSystem';
 import { FLARES } from '../systems/WeaponSystem';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
@@ -44,6 +46,7 @@ export class Game {
     buildWorld(s);
     this.fx = new Effects(s);
     this.input = new Input(canvas); this.input.onToggleMute = () => this.toggleMute();
+    { const v = vSpeeds(), k = (x: number) => Math.round(x * KTS) + ' kt', el = document.getElementById('acdata'); if (el) el.innerHTML = `<b>Aircraft data — F-16C Block 50 (sim model, SL, 26,500 lb)</b><br>VS0 ${k(v.vs0)} (gear+flaps FULL, 25° AoA) · VS1 ${k(v.vs1)} (clean) · VR ${k(v.vR)} · VLOF ${k(v.vLof)} · Vapp ${k(v.vApp)} (13° AoA)<br>VX ${k(v.vx)} / VY ${k(v.vy)} AB (${Math.round(v.roc * 196.85).toLocaleString('en')} ft/min) · MIL VX ${k(v.vxM)} / VY ${k(v.vyM)} (${Math.round(v.rocM * 196.85).toLocaleString('en')} ft/min)<br>Corner ${k(v.corner)} (9 G at 25° AoA) · Vmax SL ${k(v.vmaxSL)} (M${(v.vmaxSL / 340).toFixed(2)}) · 40,000 ft M${(v.vmax12 / 340).toFixed(2)} · VNE 800 KIAS / M2.05 · ceiling 50,000 ft<br>FLCS: +9 / −3 G, AoA limit 25°, AOA warning 26°, stall 30°`; }
     this.input.onPauseKey = () => { if (this.started) this.setPaused(!this.paused); };
     this.input.onLockLost = () => { if (this.started) this.setPaused(true); };
     this.input.onGear = () => { const p = this.player; if (!p.alive) return; if (p.onGround) { this.hud.flash('GEAR LOCKED ON GROUND', 1); return; } p.setGear(!p.gear); if (p.gear && p.flapMode === 0) p.flapMode = 1; this.hud.flash(p.gear ? 'GEAR DOWN · FLAPS ' + p.flapName : 'GEAR UP', 1); };
@@ -88,6 +91,7 @@ export class Game {
     this.resetPlayer();
   }
   resetPlayer() {
+    this.gfx?.reset();
     // spawn at the runway threshold, engine idle, gear down, brakes set
     const f = this.spawnField, p = this.player;
     p.pos.set(f.x, f.elev + GEAR_H, f.z - RWY_HALF_L + 60); p.heading = 0; p.groundPitch = 0; p.rot.copyFrom(Quaternion.Identity()); p.vel.set(0, 0, 0);
@@ -113,6 +117,7 @@ export class Game {
     this.fx.explosion(v.pos, 1.2); this.audio.explosion(v.isPlayer ? 1 : .7); v.setVisible(false);
     if (v.isPlayer) { v.respawnT = 4; this.spawnField = this.nearestField(v.pos); } else if (k.isPlayer) { this.score += 100; this.hud.flash('+100', 1); }
   }
+  gfx = new GEffects();
   frame() {
     if (this.paused) return; // freeze everything: sim, particles (updated in render), timers
     const dt = Math.min(this.engine.getDeltaTime() / 1000, .05); this.time += dt; const p = this.player;
@@ -128,7 +133,7 @@ export class Game {
       for (const a of this.all) if (a.alive) { this.weapons.updateLock(a, dt); this.weapons.fire(a, dt); }
       this.weapons.update(dt);
     }
-    this.updateCamera(dt);
+    this.updateCamera(dt); this.gfx.update(p, dt); (window as any).__gfx = this.gfx;
     const lockState = !p.alive || !p.lockTarget ? 0 : p.lockTime >= 1 ? 2 : 1;
     this.audio.engine(p.n, p.alive && this.started, p.abLevel > .5); this.audio.lock(lockState as 0 | 1 | 2, this.time);
     const agl = p.pos.y; 
