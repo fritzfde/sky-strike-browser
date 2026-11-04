@@ -46,12 +46,12 @@ export class Game {
     this.input = new Input(canvas); this.input.onToggleMute = () => this.toggleMute();
     this.input.onPauseKey = () => { if (this.started) this.setPaused(!this.paused); };
     this.input.onLockLost = () => { if (this.started) this.setPaused(true); };
-    this.input.onGear = () => { const p = this.player; if (!p.alive) return; if (p.onGround) { this.hud.flash('GEAR LOCKED ON GROUND', 1); return; } p.setGear(!p.gear); p.flaps = p.gear; this.hud.flash(p.gear ? 'GEAR + FLAPS DOWN' : 'GEAR + FLAPS UP', 1); };
+    this.input.onGear = () => { const p = this.player; if (!p.alive) return; if (p.onGround) { this.hud.flash('GEAR LOCKED ON GROUND', 1); return; } p.setGear(!p.gear); if (p.gear && p.flapMode === 0) p.flapMode = 1; this.hud.flash(p.gear ? 'GEAR DOWN · FLAPS ' + p.flapName : 'GEAR UP', 1); };
     this.input.onBrake = () => { const p = this.player; p.brakes = !p.brakes; this.hud.flash(p.brakes ? 'BRAKES ON' : 'BRAKES OFF', 1); };
     this.input.onRecenter = () => { this.lookYaw = this.lookPitch = 0; };
     this.input.onThrottleSet = v => { const p = this.player; if (p.alive) p.throttle = v; }; this.input.onFlare = () => { const p = this.player; if (p.alive && !this.weapons.dropFlares(p) && p.flares <= 0) this.hud.flash('NO FLARES', 1); }; this.input.onMap = () => this.hud.toggleMap(); this.input.onView = () => this.setView(!this.cockpitView);
     this.input.onSpeedBrake = () => { const p = this.player; p.speedbrake = !p.speedbrake; this.hud.flash(p.speedbrake ? 'SPEED BRAKE OUT' : 'SPEED BRAKE IN', 1); };
-    this.input.onFlaps = () => { const p = this.player; p.flaps = !p.flaps; this.hud.flash(p.flaps ? 'FLAPS DOWN' : 'FLAPS UP', 1); };
+    this.input.onFlaps = () => { const p = this.player; p.flapMode = (p.flapMode + 1) % 3; this.hud.flash('FLAPS ' + p.flapName, 1); };
     const $ = (id: string) => document.getElementById(id)!;
     $('btnResume').addEventListener('click', () => { this.setPaused(false); if (!('ontouchstart' in window)) this.input.requestLock(); });
     $('btnRestart').addEventListener('click', () => { this.restart(); this.setPaused(false); if (!('ontouchstart' in window)) this.input.requestLock(); });
@@ -91,7 +91,7 @@ export class Game {
     // spawn at the runway threshold, engine idle, gear down, brakes set
     const f = this.spawnField, p = this.player;
     p.pos.set(f.x, f.elev + GEAR_H, f.z - RWY_HALF_L + 60); p.heading = 0; p.groundPitch = 0; p.rot.copyFrom(Quaternion.Identity()); p.vel.set(0, 0, 0);
-    Object.assign(p, { hp: 100, lastHit: -1e9, ammo: 510, missiles: 6, flares: FLARES, flareCd: 0, threat: 0, speed: 0, throttle: 0, alive: true, lockTarget: null, lockTime: 0, onGround: true, brakes: true, stalled: false, crashReason: '', n: 0, abLevel: 0, flaps: true, flapPos: 1, speedbrake: false, sbPos: 0, aoa: 0, beta: 0, gLoad: 1, touchdownAt: null, stallWarn: false, spinRate: 0, wingDrop: 0, buffet: 0 }); p.sm.p = p.sm.r = p.sm.y = 0;
+    Object.assign(p, { hp: 100, lastHit: -1e9, ammo: 510, missiles: 6, flares: FLARES, flareCd: 0, threat: 0, speed: 0, throttle: 0, alive: true, lockTarget: null, lockTime: 0, onGround: true, brakes: true, stalled: false, crashReason: '', n: 0, abLevel: 0, flapMode: 1, flapPos: .5, flapOver: 0, speedbrake: false, sbPos: 0, aoa: 0, beta: 0, gLoad: 1, touchdownAt: null, stallWarn: false, spinRate: 0, wingDrop: 0, buffet: 0 }); p.sm.p = p.sm.r = p.sm.y = 0;
     p.setGear(true); p.setVisible(true); this.lookYaw = this.lookPitch = 0; this.camPos.set(p.pos.x, p.pos.y + 6, p.pos.z - 26); this.cam.position.copyFrom(this.camPos);
   }
   spawnWave() {
@@ -103,7 +103,7 @@ export class Game {
       const e = new Aircraft(buildJet(this.scene, new Color3(.6, .2, .18), 'enemy'), 'red'); const a = hdg + (Math.random() - .5) * 2.1, r = 2600 + Math.random() * 600;
       e.pos.set(p.pos.x + Math.sin(a) * r, Math.max(p.pos.y, 400) + 100 + Math.random() * 300, p.pos.z + Math.cos(a) * r);
       const back = Math.atan2(p.pos.x - e.pos.x, p.pos.z - e.pos.z) + (Math.random() - .5) * .8; // roughly head-on
-      e.rot.copyFrom(Quaternion.RotationYawPitchRoll(back, 0, 0)); e.updateAxes(); e.vel.copyFrom(e.fwd).scaleInPlace(150); e.speed = 150; e.throttle = .8; e.n = .8; e.flaps = false; e.flapPos = 0;
+      e.rot.copyFrom(Quaternion.RotationYawPitchRoll(back, 0, 0)); e.updateAxes(); e.vel.copyFrom(e.fwd).scaleInPlace(150); e.speed = 150; e.throttle = .8; e.n = .8; e.flapMode = 0; e.flapPos = 0;
       e.onGround = false; e.setGear(false); e.brakes = false; e.skill = skill; e.ammo = 1e9; e.missiles = Math.floor(this.wave / 3); e.flares = this.wave >= 3 ? 6 + this.wave * 2 : 0; e.hp = e.maxHp = 100; e.lastHit = -1e9;
       this.enemies.push(e); this.all.push(e);
     }

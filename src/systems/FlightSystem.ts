@@ -9,7 +9,7 @@ export const AX = new Vector3(1, 0, 0), AY = new Vector3(0, 1, 0), AZ = new Vect
 // ---------- airframe (light-weight F-16-class, SI units internally) ----------
 export const G = 9.81, MASS = 12000, WING_AREA = 28, GEAR_H = 2.6, BELLY_H = 1.4;
 export const T_MIL = 64000, T_AB = 42000, T_IDLE = .04;            // N; T/W with AB ≈ 0.9
-export const CL_ALPHA = 4.6, ALPHA_CRIT = .36, CL_FLAPS = .35;      // per rad; ~20.6° critical AoA
+export const CL_ALPHA = 4.4, ALPHA_CRIT = .42, CL_FLAPS = .35;      // per rad; ~24° critical AoA (LEX-type wing, CLmax ≈ 1.85)
 const CD0 = .021, K_IND = .11, CD_GEAR = .02, CD_FLAPS = .03, CD_SB = .075;
 const CY_BETA = 1.6, DIHEDRAL = 1.3, BETA_RUD = .21, WARN_MARGIN = .045; // side force / dihedral / full-rudder β (≈12°) / stall-warning margin (2.5°)
 const MU_ROLL = .025, MU_BRAKE = .42;
@@ -50,7 +50,8 @@ export class FlightSystem {
       a.afterburner = c.afterburner && a.throttle > .9;
       a.n += (a.throttle - a.n) * Math.min(1, dt * 2.2);                         // engine spool ≈ 1.4 s to 95%
       a.abLevel = toward(a.abLevel, a.afterburner && a.n > .85 ? 1 : 0, dt * 2.5); // AB light-up ≈ 0.4 s
-      a.flapPos = toward(a.flapPos, a.flaps ? 1 : 0, dt * .5); a.sbPos = toward(a.sbPos, a.speedbrake ? 1 : 0, dt * 1.2);
+      if (a.flapMode === 2 && a.speed > 129) { a.flapMode = 1; a.flapOver = 3; } else if (a.flapMode === 1 && a.speed > 155) { a.flapMode = 0; a.flapOver = 3; } // overspeed (>250 / >300 kt): auto-retract
+      a.flapOver = Math.max(0, a.flapOver - dt); a.flapPos = toward(a.flapPos, a.flapMode * .5, dt * .5); a.sbPos = toward(a.sbPos, a.speedbrake ? 1 : 0, dt * 1.2);
       if (a.onGround) this.ground(a, dt); else this.air(a, dt);
       a.speed = a.vel.length();
       this.animate(a);
@@ -68,7 +69,7 @@ export class FlightSystem {
     const alpha = Math.atan2(-vy, Math.max(.1, vz)), beta = Math.atan2(vx, Math.max(.1, vz));
     const den = rho(a.pos.y), q = .5 * den * v * v, qS = Math.max(50, q * WING_AREA), mach = v / 340;
     const cl = liftCoef(alpha, a.flapPos), L = qS * cl, sa = Math.sin(Math.min(1.4, Math.abs(alpha))), sc = Math.sin(ALPHA_CRIT);
-    const D = qS * (this.dragCoef(a, cl, mach, beta) + (Math.abs(alpha) > ALPHA_CRIT ? 1.8 * (sa * sa - sc * sc) : 0)); // post-stall: flat-plate drag
+    const D = qS * (this.dragCoef(a, cl, mach, beta) + (Math.abs(alpha) > ALPHA_CRIT ? 4.5 * (sa * sa - sc * sc) : 0)); // post-stall: flat-plate drag
     a.aoa = alpha; a.beta = beta; a.gLoad = L / W;
     a.stalled = alpha > ALPHA_CRIT; a.stallWarn = alpha > ALPHA_CRIT - WARN_MARGIN;   // warning = AoA within ~2.5° of critical
     a.buffet = toward(a.buffet, Math.max(0, Math.min(1, (alpha - (ALPHA_CRIT - .03)) * 12)), dt * 4);
@@ -82,10 +83,11 @@ export class FlightSystem {
     // ---- body follows velocity vector (kinematic coupling) ----
     const nv = a.vel.length(); this.vd.copyFrom(a.vel).scaleInPlace(1 / Math.max(.1, nv));
     Quaternion.FromUnitVectorsToRef(this.vd0, this.vd, this.dq); this.dq.multiplyToRef(a.rot, a.rot);
-    // ---- pitch: AoA command (no hard limiter: full aft stick goes past critical AoA → you CAN stall) ----
+    // ---- pitch: fly-by-wire G/AoA command. Limiter: 9 G and AoA ≈ crit−3.4°; above ~220 kt full aft stick gives 9 G (or the AoA cap) without stalling.
+    //      Below ~220 kt the AoA limit fades out (up to crit+4° at ≤175 kt) so a slow, full-aft-stick pull CAN stall and spin. ----
     const sm = a.sm, auth = Math.min(1, Math.max(.12, q / 6125)), perG = W / (qS * CL_ALPHA), flapA = CL_FLAPS * a.flapPos / CL_ALPHA;
     const deep = alpha > ALPHA_CRIT, sAuth = deep ? .45 : 1;                          // separated flow → control authority drops
-    const a1g = Math.min(ALPHA_CRIT * .9, perG - flapA), aMax = Math.min(ALPHA_CRIT * (a.aoaLimiter ? .85 : 1.3), 9 * perG - flapA), aNeg = Math.max(-.15, -3 * perG - flapA);
+    const a1g = Math.min(ALPHA_CRIT * .9, perG - flapA), aMax = Math.min(a.aoaLimiter ? ALPHA_CRIT * .85 : ALPHA_CRIT - .06 + .13 * Math.max(0, Math.min(1, (113 - v) / 21)), 9 * perG - flapA), aNeg = Math.max(-.15, -3 * perG - flapA);
     const aCmd = sm.p >= 0 ? a1g + sm.p * (aMax - a1g) : a1g + -sm.p * (aNeg - a1g);
     const pr = Math.max(-.6, Math.min(.6, (aCmd - alpha) * 3.5 * auth * sAuth));
     rotLocal(a, AX, -pr * dt);

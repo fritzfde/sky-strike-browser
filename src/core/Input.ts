@@ -15,7 +15,7 @@ export class Input {
   onGear?: () => void; onBrake?: () => void; onRecenter?: () => void; onView?: () => void; onSpeedBrake?: () => void; onFlaps?: () => void; onMap?: () => void; onThrottleSet?: (v: number) => void; onFlare?: () => void;
   readonly c: Controls = { pitch: 0, roll: 0, yaw: 0, throttle: 0, afterburner: false, brake: false, fireGun: false, fireMissile: false };
   constructor(private canvas: HTMLCanvasElement) {
-    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'KeyG', 'KeyB', 'KeyC', 'KeyV', 'KeyX', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'ShiftLeft', 'ShiftRight']);
+    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'KeyF', 'KeyG', 'KeyB', 'KeyC', 'KeyV', 'KeyX', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'ShiftLeft', 'ShiftRight']);
     window.addEventListener('keydown', e => {
       const k = this.code(e); this.keys.add(k); if (block.has(k)) e.preventDefault(); if (e.repeat) return;
       if (/^Digit\d$/.test(k)) this.onThrottleSet?.((+k[5] || 10) / 10); if (k === 'KeyR') this.onFlare?.(); if (k === 'KeyN') this.onToggleMute?.(); if (k === 'KeyM') this.onMap?.(); if (k === 'KeyP' || k === 'Escape') this.onPauseKey?.();
@@ -66,7 +66,7 @@ export class Input {
     const c = this.c; this.look.idle += dt; this.look.active = this.mouse.r || this.look.idle < 1.5;
     c.pitch = clamp((this.down('ArrowDown') ? 1 : 0) - (this.down('ArrowUp') ? 1 : 0) + this.touch.y); // +1 = nose up
     c.roll = clamp((this.down('ArrowLeft') ? 1 : 0) - (this.down('ArrowRight') ? 1 : 0) - this.touch.x); // +1 = roll left
-    c.yaw = clamp((this.down('KeyD') ? 1 : 0) - (this.down('KeyA') ? 1 : 0)); // +1 = nose right
+    c.yaw = clamp((this.down('KeyD', 'KeyE') ? 1 : 0) - (this.down('KeyA', 'KeyQ') ? 1 : 0)); // +1 = nose right
     c.throttle = (this.down('KeyW') || this.touch.thr ? 1 : 0) - (this.down('KeyS') || this.touch.brk ? 1 : 0);
     c.afterburner = this.down('ShiftLeft', 'ShiftRight') || this.touch.ab;
     c.fireGun = this.mouse.l || this.down('Space') || this.touch.gun;
