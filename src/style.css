@@ -20,3 +20,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:#000;font-family:monos
 #bPause{left:50%;top:10px;width:48px;height:48px;transform:translateX(-50%);font-size:18px}
 
 #chud{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;display:none;z-index:2}#bSB{right:100px;bottom:210px;font-size:11px}#bView{right:180px;bottom:210px;font-size:12px}
+#cluster{position:absolute;left:50%;top:60%;transform:translateX(-50%);text-align:center;font-size:14px;line-height:1.35;background:rgba(0,0,0,.18);padding:3px 10px;border-radius:6px}#cluster .big{font-size:24px;font-weight:bold;margin:0 14px}#cluster small{font-size:12px;margin-left:2px}
+#info{font-size:13px;opacity:.85}
+#map{position:absolute;right:0;top:0;width:50%;height:100%;display:none;pointer-events:none}
+#bMap{right:180px;bottom:290px;font-size:12px}
+.tbar{position:absolute;left:-34px;top:2px;width:16px;height:86px;border:1px solid #0f0;background:rgba(0,0,0,.3)}.tbar .tfill{position:absolute;bottom:0;left:0;right:0}.tbar .tab{position:absolute;top:0;left:0;right:0;max-height:20%;background:#f80}.tbar .tmk{position:absolute;top:20%;left:-4px;right:-4px;border-top:1px solid #fff}.tbar span{position:absolute;top:90px;left:50%;transform:translateX(-50%);font-size:12px}
+#threat{position:absolute;left:50%;top:50%;font-size:34px;display:none;text-shadow:0 0 6px #000}.blink{animation:bl .25s steps(2) infinite}@keyframes bl{50%{opacity:0}}.cnt{font-size:16px}#bFlr{right:260px;bottom:50px}
+.hpb{position:relative;width:220px;height:9px;margin:0 auto 3px;border:1px solid #0f0;background:rgba(0,0,0,.3)}.hpb div{height:100%}.hpb span{position:absolute;left:100%;top:-4px;margin-left:6px;font-size:11px}.ehp{position:absolute;top:-10px;left:0;width:100%;height:4px;background:rgba(0,0,0,.5)}.ehp div{height:100%;background:#f33}.ehpt{position:absolute;top:46px;left:50%;transform:translateX(-50%);white-space:nowrap;color:#ff0;font-size:11px}
