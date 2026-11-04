@@ -1,6 +1,6 @@
 import { Aircraft } from '../entities/Aircraft';
 import { groundAt } from '../world/Terrain';
-import { KT, FT, FPM, ALPHA_CRIT, pitchDeg, bankDeg } from './FlightSystem';
+import { KT, FT, FPM, ALPHA_LIM as ALPHA_CRIT, pitchDeg, bankDeg } from './FlightSystem';
 /**
  * Fighter-style HUD drawn on a 2D canvas over the cockpit view:
  * airspeed tape (kt, left), altitude tape (ft, right), heading tape (top), pitch ladder, flight-path marker,
