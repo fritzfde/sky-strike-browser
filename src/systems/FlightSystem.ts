@@ -11,6 +11,7 @@ export const G = 9.81, MASS = 12000, WING_AREA = 28, GEAR_H = 2.6, BELLY_H = 1.4
 export const T_MIL = 64000, T_AB = 42000, T_IDLE = .04;            // N; T/W with AB ≈ 0.9
 export const CL_ALPHA = 4.6, ALPHA_CRIT = .36, CL_FLAPS = .35;      // per rad; ~20.6° critical AoA
 const CD0 = .021, K_IND = .11, CD_GEAR = .02, CD_FLAPS = .03, CD_SB = .075;
+const CY_BETA = 1.6, DIHEDRAL = 1.3, BETA_RUD = .21, WARN_MARGIN = .045; // side force / dihedral / full-rudder β (≈12°) / stall-warning margin (2.5°)
 const MU_ROLL = .025, MU_BRAKE = .42;
 export const V_ROTATE = 62;                                         // m/s (≈120 kt) earliest rotation
 export const SAFE_LAND = { maxSink: 5, maxSpeed: 100, maxBankDeg: 12, minPitchDeg: -4, maxPitchDeg: 18 };
@@ -45,7 +46,7 @@ export class FlightSystem {
       if (!a.alive) continue;
       const c = a.ctrl, sm = a.sm, r = 3.2 * dt; // keyboard smoothing (≈0.3 s to full deflection)
       sm.p = toward(sm.p, c.pitch, r); sm.r = toward(sm.r, c.roll, r * 1.3); sm.y = toward(sm.y, c.yaw, r);
-      a.throttle = Math.min(1, Math.max(0, a.throttle + c.throttle * dt * .6));
+      a.throttle = Math.min(1, Math.max(0, a.throttle + c.throttle * dt * 1.2));
       a.afterburner = c.afterburner && a.throttle > .9;
       a.n += (a.throttle - a.n) * Math.min(1, dt * 2.2);                         // engine spool ≈ 1.4 s to 95%
       a.abLevel = toward(a.abLevel, a.afterburner && a.n > .85 ? 1 : 0, dt * 2.5); // AB light-up ≈ 0.4 s
@@ -57,7 +58,7 @@ export class FlightSystem {
   }
   thrust(a: Aircraft) { return (T_MIL * (T_IDLE + (1 - T_IDLE) * a.n) + T_AB * a.abLevel) * Math.pow(rho(a.pos.y) / 1.225, .75); }
   dragCoef(a: Aircraft, cl: number, mach: number, beta = 0) {
-    return CD0 + K_IND * cl * cl + (a.gear ? CD_GEAR : 0) + CD_FLAPS * a.flapPos + CD_SB * a.sbPos + Math.min(.05, 2.5 * Math.max(0, mach - .85) ** 2) + .5 * beta * beta;
+    return CD0 + K_IND * cl * cl + (a.gear ? CD_GEAR : 0) + CD_FLAPS * a.flapPos + CD_SB * a.sbPos + Math.min(.05, 2.5 * Math.max(0, mach - .85) ** 2) + 1.3 * beta * beta;
   }
   private air(a: Aircraft, dt: number) {
     a.updateAxes();
@@ -66,28 +67,49 @@ export class FlightSystem {
     const vx = Vector3.Dot(a.vel, a.right), vy = Vector3.Dot(a.vel, a.up), vz = Vector3.Dot(a.vel, a.fwd);
     const alpha = Math.atan2(-vy, Math.max(.1, vz)), beta = Math.atan2(vx, Math.max(.1, vz));
     const den = rho(a.pos.y), q = .5 * den * v * v, qS = Math.max(50, q * WING_AREA), mach = v / 340;
-    const cl = liftCoef(alpha, a.flapPos), L = qS * cl, D = qS * this.dragCoef(a, cl, mach, beta);
-    a.aoa = alpha; a.beta = beta; a.gLoad = L / W; a.stalled = alpha > ALPHA_CRIT * .9 || v < stallSpeed(a) * .97;
+    const cl = liftCoef(alpha, a.flapPos), L = qS * cl, sa = Math.sin(Math.min(1.4, Math.abs(alpha))), sc = Math.sin(ALPHA_CRIT);
+    const D = qS * (this.dragCoef(a, cl, mach, beta) + (Math.abs(alpha) > ALPHA_CRIT ? 1.8 * (sa * sa - sc * sc) : 0)); // post-stall: flat-plate drag
+    a.aoa = alpha; a.beta = beta; a.gLoad = L / W;
+    a.stalled = alpha > ALPHA_CRIT; a.stallWarn = alpha > ALPHA_CRIT - WARN_MARGIN;   // warning = AoA within ~2.5° of critical
+    a.buffet = toward(a.buffet, Math.max(0, Math.min(1, (alpha - (ALPHA_CRIT - .03)) * 12)), dt * 4);
     // ---- forces ----
-    const lift = this.t1.copyFrom(a.up).subtractInPlace(vd.scale(Vector3.Dot(a.up, vd))).normalize().scaleInPlace(L);
-    const side = this.t2.copyFrom(a.right).subtractInPlace(vd.scale(Vector3.Dot(a.right, vd))).normalize().scaleInPlace(-qS * 1.1 * beta);
+    const lift = this.t1.copyFrom(a.up).subtractInPlace(vd.scale(Vector3.Dot(a.up, vd))).normalize().scaleInPlace(L * Math.cos(beta) ** 2);
+    const side = this.t2.copyFrom(a.right).subtractInPlace(vd.scale(Vector3.Dot(a.right, vd))).normalize().scaleInPlace(-qS * CY_BETA * beta);
     const F = a.fwd.scale(this.thrust(a)).addInPlace(vd.scale(-D)).addInPlace(lift).addInPlace(side);
     F.y -= W;
     a.vel.addInPlace(F.scaleInPlace(dt / MASS));
     a.pos.addInPlace(a.vel.scale(dt));
-    // ---- body follows velocity vector (kinematic coupling = weathervane stability) ----
+    // ---- body follows velocity vector (kinematic coupling) ----
     const nv = a.vel.length(); this.vd.copyFrom(a.vel).scaleInPlace(1 / Math.max(.1, nv));
     Quaternion.FromUnitVectorsToRef(this.vd0, this.vd, this.dq); this.dq.multiplyToRef(a.rot, a.rot);
-    // ---- fly-by-wire AoA command ----
-    const sm = a.sm, auth = Math.min(1, Math.max(.15, q / 6125)), perG = W / (qS * CL_ALPHA), flapA = CL_FLAPS * a.flapPos / CL_ALPHA;
-    const a1g = Math.min(ALPHA_CRIT * .92, perG - flapA), aMax = Math.min(ALPHA_CRIT * 1.12, 9 * perG - flapA), aNeg = Math.max(-.15, -3 * perG - flapA);
+    // ---- pitch: AoA command (no hard limiter: full aft stick goes past critical AoA → you CAN stall) ----
+    const sm = a.sm, auth = Math.min(1, Math.max(.12, q / 6125)), perG = W / (qS * CL_ALPHA), flapA = CL_FLAPS * a.flapPos / CL_ALPHA;
+    const deep = alpha > ALPHA_CRIT, sAuth = deep ? .45 : 1;                          // separated flow → control authority drops
+    const a1g = Math.min(ALPHA_CRIT * .9, perG - flapA), aMax = Math.min(ALPHA_CRIT * (a.aoaLimiter ? .85 : 1.3), 9 * perG - flapA), aNeg = Math.max(-.15, -3 * perG - flapA);
     const aCmd = sm.p >= 0 ? a1g + sm.p * (aMax - a1g) : a1g + -sm.p * (aNeg - a1g);
-    const pr = Math.max(-.5, Math.min(.5, (aCmd - alpha) * 3.5 * auth));
+    const pr = Math.max(-.6, Math.min(.6, (aCmd - alpha) * 3.5 * auth * sAuth));
     rotLocal(a, AX, -pr * dt);
-    const deep = alpha > ALPHA_CRIT;
-    if (deep) { rotLocal(a, AX, (alpha - ALPHA_CRIT) * 2.5 * dt); rotLocal(a, AZ, (Math.random() - .5) * 1.5 * dt); } // stall break + wing rock
-    rotLocal(a, AZ, (sm.r * 3.3 - sm.y * .25) * auth * (deep ? .3 : 1) * dt);         // ailerons (+ small rudder-roll coupling)
-    rotLocal(a, AY, (beta - -sm.y * .12) * 2.5 * auth * dt);                            // rudder → sideslip, directional stability
+    if (deep) rotLocal(a, AX, (alpha - ALPHA_CRIT) * (Math.abs(a.spinRate) > .8 ? .4 : 1.6) * dt); // nose drop (weaker once spinning)
+    // ---- stall wing drop (asymmetric, biased by sideslip & aileron) ----
+    if (deep && a.wingDrop === 0) a.wingDrop = Math.sign(-beta * 8 - sm.r * .5 + (Math.random() - .5) * .3) || 1;  // +1 = right wing drops
+    if (!deep && alpha < ALPHA_CRIT - .04) a.wingDrop = 0;
+    // ---- spin / autorotation (Trudeln): stalled + yaw (rudder or sideslip) ----
+    const yawIn = sm.y, spinSign = Math.sign(a.spinRate) || a.wingDrop || Math.sign(yawIn) || 1;
+    if (deep) {
+      const pro = yawIn * spinSign;                                                       // rudder with (+) or against (−) the spin
+      const drive = .25 + Math.max(0, pro) * 1.4 + Math.abs(beta) * 4 + Math.max(0, -sm.r * spinSign) * .3;
+      const target = pro < -.3 ? 0 : Math.min(2.4, drive * 1.3);
+      a.spinRate = toward(a.spinRate, spinSign * target, dt * (pro < -.3 ? 1.6 : .9));
+    } else a.spinRate = toward(a.spinRate, 0, dt * (yawIn * Math.sign(a.spinRate) < -.3 ? 2.5 : 1.4));
+    if (a.spinRate !== 0) { rotLocal(a, AY, a.spinRate * dt); rotLocal(a, AZ, -a.spinRate * .55 * dt); }   // yaw + roll into the spin
+    // ---- roll: aileron rate command + dihedral effect (roll away from sideslip) + slight spiral tendency + stall wing drop ----
+    const bank = Math.atan2(-a.right.y, a.up.y);
+    let roll = sm.r * 3.3 * auth * sAuth + beta * DIHEDRAL * auth + bank * .04 * (Math.abs(sm.r) < .05 ? 1 : 0);
+    if (deep) roll += -a.wingDrop * Math.min(1.5, (alpha - ALPHA_CRIT) * 10) + (Math.random() - .5) * 2 * a.buffet;
+    rotLocal(a, AZ, roll * dt);
+    // ---- yaw: rudder commands sideslip, weathervane stability restores β → 0 (weak when stalled) ----
+    const rAuth = Math.min(1, Math.max(.3, q / 3500));
+    rotLocal(a, AY, (beta * (deep ? .5 : 1) + sm.y * BETA_RUD) * 3.0 * rAuth * dt);
     a.rot.normalize(); a.updateAxes();
     if (a.pos.y > 15000) { a.pos.y = 15000; a.vel.y = Math.min(0, a.vel.y); }
     const lim = 5800; a.pos.x = Math.max(-lim, Math.min(lim, a.pos.x)); a.pos.z = Math.max(-lim, Math.min(lim, a.pos.z));
@@ -103,7 +125,7 @@ export class FlightSystem {
       pitch < L.minPitchDeg || pitch > L.maxPitchDeg ? 'CRASHED — bad attitude' : '';
     if (reason) { a.pos.y = gy + 1; this.onCrash?.(a, reason); return; }
     a.onGround = true; a.heading = Math.atan2(a.fwd.x, a.fwd.z); a.groundPitch = Math.min(0, -pitch / DEG);
-    const h = Math.hypot(a.vel.x, a.vel.z); a.vel.set(Math.sin(a.heading) * h, 0, Math.cos(a.heading) * h); a.pos.y = gy + GEAR_H; a.stalled = false;
+    const h = Math.hypot(a.vel.x, a.vel.z); a.vel.set(Math.sin(a.heading) * h, 0, Math.cos(a.heading) * h); a.pos.y = gy + GEAR_H; a.stalled = a.stallWarn = false; a.spinRate = 0;
     a.touchdownAt = a.pos.clone(); this.onLand?.(a);
   }
   private ground(a: Aircraft, dt: number) {
@@ -120,7 +142,7 @@ export class FlightSystem {
     a.vel.set(Math.sin(a.heading) * s, 0, Math.cos(a.heading) * s);
     a.pos.addInPlace(a.vel.scale(dt));
     a.pos.y = groundAt(a.pos.x, a.pos.z) + GEAR_H;
-    a.stalled = false; a.aoa = -a.groundPitch; a.beta = 0; a.gLoad = 1; a.updateAxes();
+    a.stalled = a.stallWarn = false; a.spinRate = 0; a.buffet = 0; a.aoa = -a.groundPitch; a.beta = 0; a.gLoad = 1; a.updateAxes();
     if (!airfieldAt(a.pos.x, a.pos.z) && s > 22) { this.onCrash?.(a, 'CRASHED — ran off the runway'); return; }
     if (L > W && a.groundPitch < -.05) { a.onGround = false; a.everAirborne = true; a.pos.y += .2; a.vel.y = .5; } // liftoff
   }

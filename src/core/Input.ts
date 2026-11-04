@@ -12,13 +12,13 @@ export class Input {
   /** accumulated free-look deltas (radians), consumed by the camera */
   look = { dx: 0, dy: 0, active: false, idle: 0 };
   onToggleMute?: () => void; onPauseKey?: () => void; onLockLost?: () => void;
-  onGear?: () => void; onBrake?: () => void; onRecenter?: () => void; onView?: () => void; onSpeedBrake?: () => void; onFlaps?: () => void;
+  onGear?: () => void; onBrake?: () => void; onRecenter?: () => void; onView?: () => void; onSpeedBrake?: () => void; onFlaps?: () => void; onMap?: () => void; onThrottleSet?: (v: number) => void; onFlare?: () => void;
   readonly c: Controls = { pitch: 0, roll: 0, yaw: 0, throttle: 0, afterburner: false, brake: false, fireGun: false, fireMissile: false };
   constructor(private canvas: HTMLCanvasElement) {
-    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'KeyG', 'KeyB', 'KeyC', 'KeyV', 'KeyX', 'KeyL', 'ShiftLeft', 'ShiftRight']);
+    const block = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyF', 'KeyG', 'KeyB', 'KeyC', 'KeyV', 'KeyX', 'KeyL', 'KeyM', 'KeyN', 'KeyR', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'ShiftLeft', 'ShiftRight']);
     window.addEventListener('keydown', e => {
       const k = this.code(e); this.keys.add(k); if (block.has(k)) e.preventDefault(); if (e.repeat) return;
-      if (k === 'KeyM') this.onToggleMute?.(); if (k === 'KeyP' || k === 'Escape') this.onPauseKey?.();
+      if (/^Digit\d$/.test(k)) this.onThrottleSet?.((+k[5] || 10) / 10); if (k === 'KeyR') this.onFlare?.(); if (k === 'KeyN') this.onToggleMute?.(); if (k === 'KeyM') this.onMap?.(); if (k === 'KeyP' || k === 'Escape') this.onPauseKey?.();
       if (k === 'KeyG') this.onGear?.(); if (k === 'KeyB') this.onBrake?.(); if (k === 'KeyC') this.onRecenter?.(); if (k === 'KeyV') this.onView?.(); if (k === 'KeyX') this.onSpeedBrake?.(); if (k === 'KeyL') this.onFlaps?.();
     }, { capture: true });
     window.addEventListener('keyup', e => this.keys.delete(this.code(e)), { capture: true });
@@ -43,7 +43,7 @@ export class Input {
   private setupTouch() {
     document.body.classList.add('touch');
     const tap = (id: string, fn: () => void) => document.getElementById(id)!.addEventListener('touchend', e => { e.preventDefault(); fn(); });
-    tap('bPause', () => this.onPauseKey?.()); tap('bGear', () => this.onGear?.()); tap('bBrake', () => this.onBrake?.()); tap('bView', () => this.onView?.()); tap('bSB', () => this.onSpeedBrake?.());
+    tap('bPause', () => this.onPauseKey?.()); tap('bGear', () => this.onGear?.()); tap('bBrake', () => this.onBrake?.()); tap('bView', () => this.onView?.()); tap('bSB', () => this.onSpeedBrake?.()); tap('bMap', () => this.onMap?.()); tap('bFlr', () => this.onFlare?.());
     const sk = document.getElementById('stick')!, knob = document.getElementById('knob')!;
     const mv = (e: TouchEvent) => { const t = e.targetTouches[0], r = sk.getBoundingClientRect();
       this.touch.x = clamp((t.clientX - r.left - 65) / 65); this.touch.y = clamp((t.clientY - r.top - 65) / 65);
